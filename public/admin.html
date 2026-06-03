@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Панель администратора | Диагностика</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="dashboard-body">
+    <!-- Навигация -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top shadow">
+        <div class="container-fluid">
+            <a class="navbar-brand fw-bold" href="#">
+                <i class="bi bi-clipboard-data me-2"></i>Диагностика
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#" onclick="showSection('dashboard')">
+                            <i class="bi bi-speedometer2 me-1"></i>Главная
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showSection('students')">
+                            <i class="bi bi-people me-1"></i>Студенты
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showSection('tests')">
+                            <i class="bi bi-journal-text me-1"></i>Тесты
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showSection('results')">
+                            <i class="bi bi-graph-up me-1"></i>Результаты
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showSection('consents')">
+                            <i class="bi bi-file-earmark-check me-1"></i>Согласия
+                        </a>
+                    </li>
+                </ul>
+                <div class="dropdown">
+                    <button class="btn btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="bi bi-person-circle me-1"></i><span id="adminName">Админ</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><span class="dropdown-item-text text-muted small">Педагог-психолог</span></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item text-danger" href="#" onclick="logout()">
+                            <i class="bi bi-box-arrow-right me-1"></i>Выход
+                        </a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Основной контент -->
+    <main class="content-wrapper pt-5 mt-5">
+        <!-- Секция: Дашборд -->
+        <section id="section-dashboard" class="section-active p-4">
+            <h4 class="mb-4"><i class="bi bi-speedometer2 me-2"></i>Обзор системы</h4>
+            
+            <div class="row g-4 mb-4">
+                <div class="col-md-3">
+                    <div class="stat-card stat-card-primary">
+                        <div class="stat-icon"><i class="bi bi-people-fill"></i></div>
+                        <div class="stat-info">
+                            <h3 id="totalStudents">0</h3>
+                            <p>Студентов всего</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card stat-card-success">
+                        <div class="stat-icon"><i class="bi bi-journal-check"></i></div>
+                        <div class="stat-info">
+                            <h3 id="completedTests">0</h3>
+                            <p>Тестов пройдено</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card stat-card-warning">
+                        <div class="stat-icon"><i class="bi bi-hourglass-split"></i></div>
+                        <div class="stat-info">
+                            <h3 id="pendingTests">0</h3>
+                            <p>В ожидании</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card stat-card-danger">
+                        <div class="stat-icon"><i class="bi bi-shield-exclamation"></i></div>
+                        <div class="stat-info">
+                            <h3 id="pendingConsents">0</h3>
+                            <p>Нет согласия</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Быстрые действия -->
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header bg-white">
+                            <h6 class="mb-0"><i class="bi bi-lightning me-2"></i>Быстрые действия</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-outline-primary text-start" onclick="showSection('students'); openStudentModal()">
+                                    <i class="bi bi-person-plus me-2"></i>Добавить студента
+                                </button>
+                                <button class="btn btn-outline-success text-start" onclick="showSection('tests'); openTestModal()">
+                                    <i class="bi bi-plus-circle me-2"></i>Создать тест
+                                </button>
+                                <button class="btn btn-outline-info text-start" onclick="exportResults()">
+                                    <i class="bi bi-download me-2"></i>Экспорт результатов
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header bg-white">
+                            <h6 class="mb-0"><i class="bi bi-bar-chart me-2"></i>По группам</h6>
+                        </div>
+                        <div class="card-body">
+                            <div id="groupsStats" class="table-responsive">
+                                <table class="table table-sm table-hover">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Группа</th>
+                                            <th>Курс</th>
+                                            <th>Студентов</th>
+                                            <th>Прошли</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="groupsTableBody">
+                                        <tr><td colspan="4" class="text-center text-muted">Загрузка...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Секция: Студенты -->
+        <section id="section-students" class="p-4 d-none">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4><i class="bi bi-people me-2"></i>Управление студентами</h4>
+                <button class="btn btn-primary" onclick="openStudentModal()">
+                    <i class="bi bi-plus-lg me-1"></i>Добавить студента
+                </button>
+            </div>
+
+            <!-- Фильтры -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <input type="text" class="form-control" id="searchStudent" placeholder="Поиск по ФИО...">
+                        </div>
+                        <div class="col-md-2">
+                            <select class="form-select" id="filterGroup">
+                                <option value="">Все группы</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <select class="form-select" id="filterCourse">
+                                <option value="">Все курсы</option>
+                                <option value="1">1 курс</option>
+                                <option value="2">2 курс</option>
+                                <option value="3">3 курс</option>
+                                <option value="4">4 курс</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <button class="btn btn-outline-secondary w-100" onclick="loadStudents()">
+                                <i class="bi bi-search me-1"></i>Применить
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Таблица студентов -->
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>ФИО</th>
+                                    <th>Дата рождения</th>
+                                    <th>Возраст</th>
+                                    <th>Группа</th>
+                                    <th>Курс</th>
+                                    <th>Согласие</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="studentsTableBody">
+                                <tr><td colspan="7" class="text-center py-4">Загрузка...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Секция: Тесты -->
+        <section id="section-tests" class="p-4 d-none">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4><i class="bi bi-journal-text me-2"></i>Психологические методики</h4>
+                <button class="btn btn-primary" onclick="openTestModal()">
+                    <i class="bi bi-plus-lg me-1"></i>Создать тест
+                </button>
+            </div>
+
+            <div class="row g-4" id="testsList">
+                <!-- Карточки тестов будут загружены здесь -->
+            </div>
+        </section>
+
+        <!-- Секция: Результаты -->
+        <section id="section-results" class="p-4 d-none">
+            <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+                <h4><i class="bi bi-graph-up me-2"></i>Результаты диагностики</h4>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-success" onclick="exportResults()">
+                        <i class="bi bi-download me-1"></i>Скачать JSON
+                    </button>
+                </div>
+            </div>
+
+            <!-- Фильтры результатов -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <select class="form-select" id="resultGroup">
+                                <option value="">Все группы</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <select class="form-select" id="resultCourse">
+                                <option value="">Все курсы</option>
+                                <option value="1">1 курс</option>
+                                <option value="2">2 курс</option>
+                                <option value="3">3 курс</option>
+                                <option value="4">4 курс</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <select class="form-select" id="resultTest">
+                                <option value="">Все тесты</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <input type="date" class="form-control" id="dateFrom">
+                        </div>
+                        <div class="col-md-2">
+                            <input type="date" class="form-control" id="dateTo">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Таблица результатов -->
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Студент</th>
+                                    <th>Группа</th>
+                                    <th>Тест</th>
+                                    <th>Балл</th>
+                                    <th>Дата</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultsTableBody">
+                                <tr><td colspan="6" class="text-center py-4">Выберите фильтры и нажмите применить</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Секция: Согласия -->
+        <section id="section-consents" class="p-4 d-none">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4><i class="bi bi-file-earmark-check me-2"></i>Согласия родителей</h4>
+                <button class="btn btn-primary" onclick="openConsentModal()">
+                    <i class="bi bi-plus-lg me-1"></i>Добавить согласие
+                </button>
+            </div>
+
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Студент</th>
+                                    <th>Возраст</th>
+                                    <th>Родитель</th>
+                                    <th>Степень родства</th>
+                                    <th>Статус</th>
+                                    <th>Дата</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="consentsTableBody">
+                                <tr><td colspan="7" class="text-center py-4">Загрузка...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Модальное окно: Студент -->
+    <div class="modal fade" id="studentModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="studentModalTitle">Добавить студента</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="studentForm">
+                    <div class="modal-body">
+                        <h6 class="text-primary border-bottom pb-2 mb-3">Основная информация</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Логин *</label>
+                                <input type="text" class="form-control" name="username" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Пароль *</label>
+                                <input type="password" class="form-control" name="password" required>
+                            </div>
+                            <div class="col-md-8">
+                                <label class="form-label">ФИО *</label>
+                                <input type="text" class="form-control" name="full_name" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Дата рождения *</label>
+                                <input type="date" class="form-control" name="birth_date" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Группа</label>
+                                <input type="text" class="form-control" name="group_name" placeholder="ПО-41">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Курс</label>
+                                <select class="form-select" name="course">
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                    <option value="4">4</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Специальность</label>
+                                <input type="text" class="form-control" name="speciality">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Email</label>
+                                <input type="email" class="form-control" name="email">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Телефон</label>
+                                <input type="tel" class="form-control" name="phone">
+                            </div>
+                        </div>
+
+                        <h6 class="text-primary border-bottom pb-2 mb-3 mt-4">Семейные данные</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Тип семьи</label>
+                                <select class="form-select" name="family_type">
+                                    <option value="full">Полная</option>
+                                    <option value="single_parent">Неполная</option>
+                                    <option value="guardian">Опека</option>
+                                    <option value="other">Другое</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">С кем проживает</label>
+                                <input type="text" class="form-control" name="lives_with" placeholder="Мама, папа, бабушка...">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Братья</label>
+                                <input type="number" class="form-control" name="brothers_count" value="0" min="0">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Сёстры</label>
+                                <input type="number" class="form-control" name="sisters_count" value="0" min="0">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                        <button type="submit" class="btn btn-primary">Сохранить</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно: Тест -->
+    <div class="modal fade" id="testModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title" id="testModalTitle">Создать тест</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="testForm">
+                    <div class="modal-body">
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-8">
+                                <label class="form-label fw-bold">Название теста *</label>
+                                <input type="text" class="form-control form-control-lg" name="title" required placeholder="Например: Шкала тревожности">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Описание</label>
+                                <textarea class="form-control" name="description" rows="1" placeholder="Краткое описание"></textarea>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="mb-0"><i class="bi bi-list-task me-2"></i>Вопросы теста</h6>
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addQuestion()">
+                                <i class="bi bi-plus-lg me-1"></i>Добавить вопрос
+                            </button>
+                        </div>
+
+                        <div id="questionsContainer">
+                            <!-- Вопросы будут добавляться здесь -->
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                        <button type="submit" class="btn btn-success">Сохранить тест</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно: Согласие -->
+    <div class="modal fade" id="consentModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title">Регистрация согласия родителя</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="consentForm">
+                    <div class="modal-body">
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle me-2"></i>
+                            Эта форма используется для регистрации письменного согласия законного представителя на проведение психологической диагностики несовершеннолетнего студента.
+                        </div>
+                        
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold">Студент *</label>
+                                <select class="form-select" name="userId" id="consentStudentSelect" required>
+                                    <option value="">Выберите студента</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <h6 class="text-primary border-bottom pb-2 mb-3">Данные родителя (законного представителя)</h6>
+                        <div class="row g-3">
+                            <div class="col-md-8">
+                                <label class="form-label">ФИО родителя *</label>
+                                <input type="text" class="form-control" name="parentFullName" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Степень родства *</label>
+                                <select class="form-select" name="parentRelationship" required>
+                                    <option value="mother">Мать</option>
+                                    <option value="father">Отец</option>
+                                    <option value="guardian">Опекун</option>
+                                    <option value="other">Другое</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Телефон родителя</label>
+                                <input type="tel" class="form-control" name="parentPhone">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Email родителя</label>
+                                <input type="email" class="form-control" name="parentEmail">
+                            </div>
+                        </div>
+
+                        <h6 class="text-primary border-bottom pb-2 mb-3 mt-4">Текст согласия</h6>
+                        <div class="mb-3">
+                            <textarea class="form-control" name="consentText" rows="6" required>Я, нижеподписавшийся, даю согласие на проведение психологической диагностики моего ребёнка, а также на психолого-педагогическое сопровождение, обработку и хранение персональных данных в соответствии с законодательством РФ.</textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Скан подписи (PDF, JPG, PNG)</label>
+                            <input type="file" class="form-control" name="signature" accept=".pdf,.jpg,.jpeg,.png">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                        <button type="submit" class="btn btn-warning">Зарегистрировать согласие</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно: Просмотр результата -->
+    <div class="modal fade" id="resultModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title">Детали результата</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="resultModalBody">
+                    <!-- Контент загружается динамически -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно: Назначение теста -->
+    <div class="modal fade" id="assignModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">Назначить тест</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="assignForm">
+                    <div class="modal-body">
+                        <input type="hidden" name="questionnaireId" id="assignQuestionnaireId">
+                        <div class="mb-3">
+                            <label class="form-label">Выберите студентов</label>
+                            <div id="assignStudentsList" class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
+                                <!-- Чекбоксы студентов -->
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Срок сдачи</label>
+                            <input type="date" class="form-control" name="dueDate">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                        <button type="submit" class="btn btn-success">Назначить</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="app.js"></script>
+    <script>
+        // Инициализация
+        let token = localStorage.getItem('token');
+        let currentUser = JSON.parse(localStorage.getItem('user'));
+
+        if (!token || currentUser?.role !== 'admin') {
+            window.location.href = '/';
+        }
+
+        document.getElementById('adminName').textContent = currentUser.fullName;
+
+        // Загрузка данных при старте
+        loadDashboardStats();
+        loadGroupsForFilters();
+        loadStudents();
+        loadTests();
+        loadConsents();
+        loadTestsForFilter();
+
+        // ========== НАВИГАЦИЯ ==========
+        function showSection(sectionName) {
+            document.querySelectorAll('main > section').forEach(s => s.classList.add('d-none'));
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            
+            document.getElementById(`section-${sectionName}`).classList.remove('d-none');
+            event.target.closest('.nav-link')?.classList.add('active');
+
+            // Перезагрузка данных секции
+            if (sectionName === 'dashboard') loadDashboardStats();
+            if (sectionName === 'results') loadResults();
+        }
+
+        // ========== ДАШБОРД ==========
+        async function loadDashboardStats() {
+            try {
+                const [studentsRes, groupsRes, consentsRes] = await Promise.all([
+                    fetch('/api/students', { headers: { 'Authorization': `Bearer ${token}` }}),
+                    fetch('/api/statistics/groups', { headers: { 'Authorization': `Bearer ${token}` }}),
+                    fetch('/api/consents', { headers: { 'Authorization': `Bearer ${token}` }})
+                ]);
+
+                const students = await studentsRes.json();
+                const groups = await groupsRes.json();
+                const consents = await consentsRes.json();
+
+                document.getElementById('totalStudents').textContent = students.length;
+                
+                let completed = 0, pending = 0;
+                groups.forEach(g => {
+                    completed += parseInt(g.completed_tests) || 0;
+                });
+                document.getElementById('completedTests').textContent = completed;
+                document.getElementById('pendingTests').textContent = students.length - completed;
+                
+                const noConsent = consents.filter(c => c.signature_status !== 'confirmed').length +
+                                   students.filter(s => s.age < 18 && !s.consent_status).length;
+                document.getElementById('pendingConsents').textContent = noConsent;
+
+                // Таблица групп
+                const tbody = document.getElementById('groupsTableBody');
+                if (groups.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Нет данных</td></tr>';
+                } else {
+                    tbody.innerHTML = groups.map(g => `
+                        <tr>
+                            <td>${g.group_name || '-'}</td>
+                            <td>${g.course || '-'} курс</td>
+                            <td>${g.total_students}</td>
+                            <td><span class="badge bg-success">${g.completed_tests || 0}</span></td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        // ========== СТУДЕНТЫ ==========
+        async function loadStudents() {
+            try {
+                const params = new URLSearchParams();
+                const search = document.getElementById('searchStudent')?.value;
+                const group = document.getElementById('filterGroup')?.value;
+                const course = document.getElementById('filterCourse')?.value;
+                
+                if (search) params.append('search', search);
+                if (group) params.append('group', group);
+                if (course) params.append('course', course);
+
+                const res = await fetch(`/api/students?${params}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const students = await res.json();
+
+                const tbody = document.getElementById('studentsTableBody');
+                if (students.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">Студенты не найдены</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = students.map(s => `
+                    <tr>
+                        <td class="fw-semibold">${s.full_name}</td>
+                        <td>${formatDate(s.birth_date)}</td>
+                        <td>${s.age} лет</td>
+                        <td>${s.group_name || '-'}</td>
+                        <td>${s.course || '-'} курс</td>
+                        <td>${getConsentBadge(s.consent_status, s.age)}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="editStudent(${s.id})" title="Редактировать">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="deleteStudent(${s.id})" title="Удалить">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        function getConsentBadge(status, age) {
+            if (age >= 18) return '<span class="badge bg-secondary">Не требуется</span>';
+            if (!status) return '<span class="badge bg-danger">Не получено</span>';
+            if (status === 'confirmed') return '<span class="badge bg-success">Подтверждено</span>';
+            if (status === 'pending') return '<span class="badge bg-warning text-dark">Ожидает</span>';
+            return `<span class="badge bg-secondary">${status}</span>`;
+        }
+
+        let editingStudentId = null;
+
+        function openStudentModal(studentId = null) {
+            editingStudentId = studentId;
+            document.getElementById('studentForm').reset();
+            document.getElementById('studentModalTitle').textContent = studentId ? 'Редактировать студента' : 'Добавить студента';
+            
+            if (studentId) {
+                // TODO: загрузка данных студента
+            }
+            
+            new bootstrap.Modal(document.getElementById('studentModal')).show();
+        }
+
+        document.getElementById('studentForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                const url = editingStudentId ? `/api/students/${editingStudentId}` : '/api/students';
+                const method = editingStudentId ? 'PUT' : 'POST';
+
+                const res = await fetch(url, {
+                    method,
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (!res.ok) throw new Error(await res.text());
+
+                bootstrap.Modal.getInstance(document.getElementById('studentModal')).hide();
+                loadStudents();
+                loadDashboardStats();
+                alert(editingStudentId ? 'Студент обновлён!' : 'Студент добавлен!');
+            } catch (e) {
+                alert('Ошибка: ' + e.message);
+            }
+        });
+
+        async function deleteStudent(id) {
+            if (!confirm('Удалить этого студента?')) return;
+            
+            try {
+                await fetch(`/api/students/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                loadStudents();
+                loadDashboardStats();
+            } catch (e) { alert('Ошибка удаления'); }
+        }
+
+        // ========== ТЕСТЫ ==========
+        async function loadTests() {
+            try {
+                const res = await fetch('/api/questionnaires', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const tests = await res.json();
+
+                const container = document.getElementById('testsList');
+                if (tests.length === 0) {
+                    container.innerHTML = '<div class="col-12 text-center text-muted py-5">Тесты пока не созданы</div>';
+                    return;
+                }
+
+                container.innerHTML = tests.map(t => `
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card h-100 test-card">
+                            <div class="card-body">
+                                <h5 class="card-title">${t.title}</h5>
+                                <p class="card-text text-muted small">${t.description || 'Без описания'}</p>
+                                <div class="d-flex justify-content-between align-items-center mt-3">
+                                    <span class="badge bg-primary">${t.questions_count} вопросов</span>
+                                    <small class="text-muted">${formatDate(t.created_at)}</small>
+                                </div>
+                            </div>
+                            <div class="card-footer bg-transparent border-top-0">
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-sm btn-outline-success" onclick="openAssignModal(${t.id}, '${t.title}')">
+                                        <i class="bi bi-person-plus me-1"></i>Назначить
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="viewTest(${t.id})">
+                                        <i class="bi bi-eye me-1"></i>Просмотреть
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        let questionCounter = 0;
+
+        function openTestModal() {
+            questionCounter = 0;
+            document.getElementById('questionsContainer').innerHTML = '';
+            addQuestion(); // Добавляем первый вопрос
+            new bootstrap.Modal(document.getElementById('testModal')).show();
+        }
+
+        function addQuestion() {
+            const container = document.getElementById('questionsContainer');
+            const qNum = ++questionCounter;
+            
+            const questionHtml = `
+                <div class="card mb-3 question-card" id="question-${qNum}">
+                    <div class="card-header d-flex justify-content-between align-items-center py-2">
+                        <span class="fw-bold">Вопрос ${qNum}</span>
+                        <div class="d-flex gap-2">
+                            <select class="form-select form-select-sm" style="width:auto;" onchange="updateQuestionType(${qNum}, this.value)">
+                                <option value="single">Один ответ</option>
+                                <option value="multiple">Несколько ответов</option>
+                                <option value="scale">Шкала</option>
+                                <option value="text">Текстовый</option>
+                            </select>
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeQuestion(${qNum})">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <input type="text" class="form-control" name="questions[${qNum}][questionText]" 
+                                   placeholder="Текст вопроса *" required>
+                        </div>
+                        <div class="question-options" id="options-${qNum}">
+                            <label class="form-label small">Варианты ответов:</label>
+                            <div class="options-list">
+                                <div class="input-group input-group-sm mb-2">
+                                    <input type="text" class="form-control option-input" placeholder="Вариант 1">
+                                    <button type="button" class="btn btn-outline-secondary" onclick="addOption(this)">+</button>
+                                </div>
+                                <div class="input-group input-group-sm mb-2">
+                                    <input type="text" class="form-control option-input" placeholder="Вариант 2">
+                                    <button type="button" class="btn btn-outline-secondary" onclick="addOption(this)">+</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="scale-options d-none" id="scale-${qNum}">
+                            <div class="row g-2">
+                                <div class="col-3">
+                                    <label class="form-label small">Минимум</label>
+                                    <input type="number" class="form-control form-control-sm" value="1" name="questions[${qNum}][scaleMin]">
+                                </div>
+                                <div class="col-3">
+                                    <label class="form-label small">Максимум</label>
+                                    <input type="number" class="form-control form-control-sm" value="5" name="questions[${qNum}][scaleMax]">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" checked name="questions[${qNum}][isRequired]">
+                            <label class="form-check-label small">Обязательный вопрос</label>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            container.insertAdjacentHTML('beforeend', questionHtml);
+        }
+
+        function removeQuestion(qNum) {
+            document.getElementById(`question-${qNum}`).remove();
+        }
+
+        function updateQuestionType(qNum, type) {
+            const optionsDiv = document.getElementById(`options-${qNum}`);
+            const scaleDiv = document.getElementById(`scale-${qNum}`);
+            
+            if (type === 'scale') {
+                optionsDiv.classList.add('d-none');
+                scaleDiv.classList.remove('d-none');
+            } else if (type === 'text') {
+                optionsDiv.classList.add('d-none');
+                scaleDiv.classList.add('d-none');
+            } else {
+                optionsDiv.classList.remove('d-none');
+                scaleDiv.classList.add('d-none');
+            }
+        }
+
+        function addOption(btn) {
+            const list = btn.closest('.options-list');
+            const count = list.querySelectorAll('.input-group').length + 1;
+            const newOpt = document.createElement('div');
+            newOpt.className = 'input-group input-group-sm mb-2';
+            newOpt.innerHTML = `
+                <input type="text" class="form-control option-input" placeholder="Вариант ${count}">
+                <button type="button" class="btn btn-outline-secondary" onclick="addOption(this)">+</button>
+                <button type="button" class="btn btn-outline-danger" onclick="this.parentElement.remove()">×</button>
+            `;
+            list.appendChild(newOpt);
+        }
+
+        document.getElementById('testForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const title = this.title.value;
+            const description = this.description.value;
+            const questions = [];
+
+            document.querySelectorAll('.question-card').forEach((card, idx) => {
+                const qType = card.querySelector('select').value;
+                const qText = card.querySelector('input[name*="questionText"]').value;
+                const isRequired = card.querySelector('[name*="isRequired"]')?.checked ?? true;
+                
+                let options = [];
+                if (qType === 'single' || qType === 'multiple') {
+                    card.querySelectorAll('.option-input').forEach(input => {
+                        if (input.value.trim()) options.push(input.value.trim());
+                    });
+                }
+
+                questions.push({
+                    questionText: qText,
+                    questionType: qType,
+                    options: options,
+                    scaleMin: card.querySelector('[name*="scaleMin"]')?.value || 1,
+                    scaleMax: card.querySelector('[name*="scaleMax"]')?.value || 5,
+                    isRequired: isRequired
+                });
+            });
+
+            if (questions.length === 0 || !title) {
+                alert('Заполните название и добавьте хотя бы один вопрос!');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/questionnaires', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ title, description, questions })
+                });
+
+                if (!res.ok) throw new Error(await res.text());
+
+                bootstrap.Modal.getInstance(document.getElementById('testModal')).hide();
+                loadTests();
+                alert('Тест успешно создан!');
+            } catch (e) {
+                alert('Ошибка: ' + e.message);
+            }
+        });
+
+        // Назначение теста
+        async function openAssignModal(testId, testName) {
+            document.getElementById('assignQuestionnaireId').value = testId;
+            
+            // Загрузка студентов
+            const res = await fetch('/api/students', { headers: { 'Authorization': `Bearer ${token}` }});
+            const students = await res.json();
+            
+            const list = document.getElementById('assignStudentsList');
+            list.innerHTML = students.map(s => `
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" value="${s.id}" id="student-${s.id}" name="userIds">
+                    <label class="form-check-label" for="student-${s.id}">
+                        ${s.full_name} (${s.group_name || 'без группы'}, ${s.age} лет)
+                    </label>
+                </div>
+            `).join('');
+
+            new bootstrap.Modal(document.getElementById('assignModal')).show();
+        }
+
+        document.getElementById('assignForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const checkboxes = this.querySelectorAll('input[name="userIds"]:checked');
+            const userIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+            
+            if (userIds.length === 0) {
+                alert('Выберите хотя бы одного студента!');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/assign-test', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        questionnaireId: parseInt(this.questionnaireId.value),
+                        userIds,
+                        dueDate: this.dueDate.value || null
+                    })
+                });
+
+                if (!res.ok) throw new Error(await res.text());
+
+                bootstrap.Modal.getInstance(document.getElementById('assignModal')).hide();
+                alert(`Тест назначен ${userIds.length} студентам!`);
+            } catch (e) {
+                alert('Ошибка: ' + e.message);
+            }
+        });
+
+        // ========== РЕЗУЛЬТАТЫ ==========
+        async function loadTestsForFilter() {
+            try {
+                const res = await fetch('/api/questionnaires', { headers: { 'Authorization': `Bearer ${token}` }});
+                const tests = await res.json();
+                
+                ['resultTest'].forEach(selectId => {
+                    const select = document.getElementById(selectId);
+                    tests.forEach(t => {
+                        select.innerHTML += `<option value="${t.id}">${t.title}</option>`;
+                    });
+                });
+            } catch (e) {}
+        }
+
+        async function loadResults() {
+            try {
+                const params = new URLSearchParams();
+                const group = document.getElementById('resultGroup')?.value;
+                const course = document.getElementById('resultCourse')?.value;
+                const test = document.getElementById('resultTest')?.value;
+                const from = document.getElementById('dateFrom')?.value;
+                const to = document.getElementById('dateTo')?.value;
+                
+                if (group) params.append('groupId', group);
+                if (course) params.append('courseId', course);
+                if (test) params.append('questionnaireId', test);
+                if (from) params.append('startDate', from);
+                if (to) params.append('endDate', to);
+
+                const res = await fetch(`/api/results?${params}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const results = await res.json();
+
+                const tbody = document.getElementById('resultsTableBody');
+                if (results.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">Результаты не найдены</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = results.map(r => `
+                    <tr>
+                        <td class="fw-semibold">${r.full_name}</td>
+                        <td>${r.group_name || '-'}</td>
+                        <td>${r.questionnaire_title}</td>
+                        <td><span class="badge ${getScoreBadge(r.score)}">${r.score}</span></td>
+                        <td>${formatDateTime(r.completed_at)}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-info" onclick="viewResult(${r.id})">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        function getScoreBadge(score) {
+            if (score >= 4) return 'bg-danger';
+            if (score >= 3) return 'bg-warning text-dark';
+            return 'bg-success';
+        }
+
+        async function viewResult(resultId) {
+            try {
+                const res = await fetch('/api/results', { headers: { 'Authorization': `Bearer ${token}` }});
+                const results = await res.json();
+                const result = results.find(r => r.id === resultId);
+                
+                if (!result) return;
+
+                const body = document.getElementById('resultModalBody');
+                body.innerHTML = `
+                    <h5>${result.full_name}</h5>
+                    <p class="text-muted">Тест: ${result.questionnaire_title} | Балл: <strong>${result.score}</strong></p>
+                    <hr>
+                    <h6>Ответы:</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead><tr><th>#</th><th>Ответ</th></tr></thead>
+                            <tbody>
+                                ${Object.entries(result.answers).map(([key, val], i) => `
+                                    <tr><td>${parseInt(key)+1}</td><td>${Array.isArray(val) ? val.join(', ') : val}</td></tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+
+                new bootstrap.Modal(document.getElementById('resultModal')).show();
+            } catch (e) {}
+        }
+
+        async function exportResults() {
+            try {
+                const res = await fetch('/api/export/json', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `diagnostic-results-${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+            } catch (e) {
+                alert('Ошибка экспорта');
+            }
+        }
+
+        // ========== СОГЛАСИЯ ==========
+        async function loadConsents() {
+            try {
+                const res = await fetch('/api/consents', { headers: { 'Authorization': `Bearer ${token}` }});
+                const consents = await res.json();
+
+                const tbody = document.getElementById('consentsTableBody');
+                if (consents.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">Согласий нет</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = consents.map(c => {
+                    const age = c.birth_date ? Math.floor((new Date() - new Date(c.birth_date)) / (365.25*24*60*60*1000)) : '?';
+                    return `
+                        <tr>
+                            <td class="fw-semibold">${c.student_name}</td>
+                            <td>${age} лет</td>
+                            <td>${c.parent_full_name}</td>
+                            <td>${getRelationLabel(c.parent_relationship)}</td>
+                            <td>${getConsentStatusLabel(c.signature_status)}</td>
+                            <td>${formatDate(c.consent_date)}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-warning" onclick="updateConsentStatus(${c.id})">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+                // Заполняем селект для модалки
+                const select = document.getElementById('consentStudentSelect');
+                // Уникальные студенты без подтверждённого согласия
+                const uniqueStudents = [...new Map(consents.map(c => [c.user_id, c])).values()];
+                select.innerHTML = '<option value="">Выберите студента</option>' +
+                    uniqueStudents.map(c => `<option value="${c.user_id}">${c.student_name}</option>`).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        function getRelationLabel(rel) {
+            const labels = { mother: 'Мать', father: 'Отец', guardian: 'Опекун', other: 'Другое' };
+            return labels[rel] || rel;
+        }
+
+        function getConsentStatusLabel(status) {
+            const badges = {
+                pending: '<span class="badge bg-warning text-dark">Ожидает</span>',
+                confirmed: '<span class="badge bg-success">Подтверждено</span>',
+                rejected: '<span class="badge bg-danger">Отклонено</span>'
+            };
+            return badges[status] || status;
+        }
+
+        function openConsentModal() {
+            new bootstrap.Modal(document.getElementById('consentModal')).show();
+        }
+
+        document.getElementById('consentForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            
+            try {
+                const res = await fetch('/api/consents', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+
+                if (!res.ok) throw new Error(await res.text());
+
+                bootstrap.Modal.getInstance(document.getElementById('consentModal')).hide();
+                loadConsents();
+                loadDashboardStats();
+                alert('Согласие зарегистрировано!');
+            } catch (err) {
+                alert('Ошибка: ' + err.message);
+            }
+        });
+
+        function updateConsentStatus(consentId) {
+            const newStatus = prompt('Введите новый статус (pending/confirmed/rejected):');
+            if (!newStatus) return;
+
+            fetch(`/api/consents/${consentId}`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ status: newStatus })
+            }).then(() => {
+                loadConsents();
+                loadDashboardStats();
+            });
+        }
+
+        // ========== СПРАВОЧНИКИ ==========
+        async function loadGroupsForFilters() {
+            try {
+                const res = await fetch('/api/groups', { headers: { 'Authorization': `Bearer ${token}` }});
+                const groups = await res.json();
+                
+                ['filterGroup', 'resultGroup'].forEach(selectId => {
+                    const select = document.getElementById(selectId);
+                    if (select) {
+                        groups.forEach(g => {
+                            select.innerHTML += `<option value="${g.group_name}">${g.group_name}</option>`;
+                        });
+                    }
+                });
+            } catch (e) {}
+        }
+
+        // ========== ПОЛЕЗНЫЕ ФУНКЦИИ ==========
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            return new Date(dateStr).toLocaleDateString('ru-RU');
+        }
+
+        function formatDateTime(dateStr) {
+            if (!dateStr) return '-';
+            return new Date(dateStr).toLocaleString('ru-RU');
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/';
+        }
+
+        // Автоматическая перезагрузка результатов при изменении фильтров
+        ['resultGroup', 'resultCourse', 'resultTest', 'dateFrom', 'dateTo'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', loadResults);
+        });
+    </script>
+</body>
+</html>

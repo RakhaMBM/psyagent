@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Психологическая диагностика | Вход</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/x-icon" href="C:/Projects/psyagent/public/1-log-vkit">
+</head>
+<body class="login-page">
+    <div class="container">
+        <div class="row justify-content-center align-items-center min-vh-100">
+            <div class="col-md-5 col-lg-4">
+                <div class="card shadow-lg border-0 rounded-4">
+                    <div class="card-body p-5">
+                        <!-- Логотип -->
+                        <div class="text-center mb-4">
+                            <div class="logo-circle mb-3">
+                                <i class="bi bi-psychology fs-1"></i>
+                            </div>
+                            <h2 class="fw-bold text-primary">Диагностика</h2>
+                            <p class="text-muted">Психологическая служба колледжа</p>
+                        </div>
+
+                        <!-- Форма входа -->
+                        <form id="loginForm">
+                            <div class="mb-3">
+                                <label for="username" class="form-label">Логин</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-person"></i></span>
+                                    <input type="text" class="form-control" id="username" placeholder="Введите логин" required>
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <label for="password" class="form-label">Пароль</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                                    <input type="password" class="form-control" id="password" placeholder="Введите пароль" required>
+                                    <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="errorMsg" class="alert alert-danger d-none"></div>
+
+                            <button type="submit" class="btn btn-primary w-btn py-2 mb-3" id="loginBtn">
+                                <span class="btn-text">Войти</span>
+                                <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+                            </button>
+                        </form>
+
+                        <hr class="my-4">
+                        
+                        <div class="text-center text-muted small">
+                            <p>© 2024 Психологическая служба</p>
+                            <p>Колледж • Специальность «Программное обеспечение / Информационные системы»</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Показать/скрыть пароль
+        document.getElementById('togglePassword').addEventListener('click', function() {
+            const pwd = document.getElementById('password');
+            const icon = this.querySelector('i');
+            if (pwd.type === 'password') {
+                pwd.type = 'text';
+                icon.classList.replace('bi-eye', 'bi-eye-slash');
+            } else {
+                pwd.type = 'password';
+                icon.classList.replace('bi-eye-slash', 'bi-eye');
+            }
+        });
+
+        // Обработка входа
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const btn = document.getElementById('loginBtn');
+            const spinner = btn.querySelector('.spinner-border');
+            const btnText = btn.querySelector('.btn-text');
+            const errorMsg = document.getElementById('errorMsg');
+
+            // Показываем загрузку
+            spinner.classList.remove('d-none');
+            btnText.textContent = 'Вход...';
+            btn.disabled = true;
+            errorMsg.classList.add('d-none');
+
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value,
+                        password: document.getElementById('password').value
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Ошибка входа');
+                }
+
+                // Сохраняем токен
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('user', JSON.stringify(data.user));
+
+                // Перенаправление по роли
+                if (data.user.role === 'admin') {
+                    window.location.href = '/admin';
+                } else {
+                    window.location.href = '/student';
+                }
+
+            } catch (error) {
+                errorMsg.textContent = error.message;
+                errorMsg.classList.remove('d-none');
+                
+                // Сбрасываем кнопку
+                spinner.classList.add('d-none');
+                btnText.textContent = 'Войти';
+                btn.disabled = false;
+            }
+        });
+
+        // Проверяем авторизацию при загрузке
+        window.addEventListener('load', () => {
+            const token = localStorage.getItem('token');
+            const user = localStorage.getItem('user');
+            
+            if (token && user) {
+                const userData = JSON.parse(user);
+                if (userData.role === 'admin') {
+                    window.location.href = '/admin';
+                } else {
+                    window.location.href = '/student';
+                }
+            }
+        });
+    </script>
+</body>
+</html>

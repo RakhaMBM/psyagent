@@ -1,0 +1,41 @@
+# Зависимости
+node_modules/
+
+# Логи
+logs/
+*.log
+npm-debug.log*
+pm2/logs/
+*.log.0
+
+# Файлы окружения (пароли!)
+.env
+.env.local
+.env.production
+
+# Загруженные файлы пользователей
+public/uploads/*
+!public/uploads/.gitkeep
+
+# Операционные системы
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE / Редакторы
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Временные файлы
+tmp/
+temp/
+*.tmp
+
+# Бэкапы БД
+*.sql
+!/schema.sql
+
+# PM2
+.pm2/dump.pm2
