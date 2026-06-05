@@ -9,7 +9,6 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body class="dashboard-body">
-    <!-- Навигация -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-success fixed-top shadow">
         <div class="container-fluid">
             <a class="navbar-brand fw-bold" href="#">
@@ -22,7 +21,6 @@
         </div>
     </nav>
 
-    <!-- Предупреждение о возрасте -->
     <div id="ageWarning" class="alert alert-warning m-3 d-none" role="alert">
         <i class="bi bi-exclamation-triangle me-2"></i>
         <strong>Внимание!</strong> Вам менее 18 лет. Для прохождения диагностики требуется согласие родителя.
@@ -30,7 +28,6 @@
     </div>
 
     <main class="content-wrapper pt-5 mt-5 p-4">
-        <!-- Карточка профиля -->
         <div class="row mb-4">
             <div class="col-md-4">
                 <div class="card profile-card">
@@ -47,14 +44,14 @@
                         <div class="text-start small">
                             <div class="mb-2"><strong>Email:</strong> <span id="profileEmail">-</span></div>
                             <div class="mb-2"><strong>Телефон:</strong> <span id="profilePhone">-</span></div>
-                            <div><strong>Специальность:</strong> <span id="profileSpecialty">-</span></div>
+                            <div class="mb-2"><strong>Школа:</strong> <span id="profileSchool">-</span></div>
+                            <div><strong>Адрес:</strong> <span id="profileAddress">-</span></div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <div class="col-md-8">
-                <!-- Анкета -->
                 <div class="card mb-4">
                     <div class="card-header bg-white d-flex justify-content-between align-items-center">
                         <h6 class="mb-0"><i class="bi bi-file-earmark-person me-2"></i>Моя анкета</h6>
@@ -67,7 +64,6 @@
                     </div>
                 </div>
 
-                <!-- Мои тесты -->
                 <div class="card">
                     <div class="card-header bg-white">
                         <h6 class="mb-0"><i class="bi bi-journal-check me-2"></i>Назначенные тесты</h6>
@@ -83,7 +79,6 @@
         </div>
     </main>
 
-    <!-- Модальное окно: Профиль -->
     <div class="modal fade" id="profileModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -112,15 +107,14 @@
                                    placeholder="Например: мама, бабушка, старший брат...">
                         </div>
 
-                        <div class="row g-3 mb-3">
-                            <div class="col-6">
-                                <label class="form-label">Количество братьев</label>
-                                <input type="number" class="form-control" name="brothers_count" value="0" min="0">
-                            </div>
-                            <div class="col-6">
-                                <label class="form-label">Количество сестёр</label>
-                                <input type="number" class="form-control" name="sisters_count" value="0" min="0">
-                            </div>
+                        <div class="mb-3">
+                            <label class="form-label">Школа окончания</label>
+                            <input type="text" class="form-control" name="school" placeholder="№123 г. Алматы">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Домашний адрес</label>
+                            <input type="text" class="form-control" name="home_address" placeholder="ул. Примерная, д. 1, кв. 2">
                         </div>
 
                         <div class="alert alert-info small">
@@ -137,7 +131,6 @@
         </div>
     </div>
 
-    <!-- Модальное окно: Прохождение теста -->
     <div class="modal fade" id="testModal" tabindex="-1">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
@@ -146,7 +139,6 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body" id="testQuestions">
-                    <!-- Вопросы загружаются динамически -->
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
@@ -163,7 +155,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Инициализация
         let token = localStorage.getItem('token');
         let currentUser = JSON.parse(localStorage.getItem('user'));
         let currentResultId = null;
@@ -173,7 +164,6 @@
             window.location.href = '/';
         }
 
-        // Загрузка данных пользователя
         async function loadUserInfo() {
             try {
                 const res = await fetch('/api/auth/me', {
@@ -194,23 +184,18 @@
                 
                 document.getElementById('studentInfo').textContent = user.full_name;
                 document.getElementById('profileName').textContent = user.full_name;
-                document.getElementById('profileGroup').textContent = 
-                    `${user.group_name || ''} ${user.course ? user.course + ' курс' : ''}`.trim();
-                document.getElementById('profileAge').textContent = 
-                    user.age ? `${user.age} лет` : 'Возраст не указан';
+                document.getElementById('profileGroup').textContent = user.group_name || '';
+                document.getElementById('profileAge').textContent = user.age ? `${user.age} лет` : 'Возраст не указан';
                 document.getElementById('profileEmail').textContent = user.email || '-';
                 document.getElementById('profilePhone').textContent = user.phone || '-';
-                document.getElementById('profileSpecialty').textContent = user.specialty || '-';
+                document.getElementById('profileSchool').textContent = user.school || '-';
+                document.getElementById('profileAddress').textContent = user.home_address || '-';
 
-                // Предупреждение о возрасте
                 if (!user.isAdult && user.consentStatus !== 'confirmed') {
                     showConsentWarning(user.consentStatus);
                 }
 
-                // Загрузка профиля
                 loadProfile();
-                
-                // Загрузка тестов
                 loadMyTests();
                 
             } catch (e) {
@@ -235,7 +220,6 @@
             }
         }
 
-        // Загрузка профиля
         async function loadProfile() {
             try {
                 const res = await fetch('/api/profile', {
@@ -250,8 +234,8 @@
                         <div class="row">
                             <div class="col-6"><strong>Тип семьи:</strong> ${familyTypes[profile.family_type] || '-'}</div>
                             <div class="col-6"><strong>Проживает с:</strong> ${profile.lives_with || '-'}</div>
-                            <div class="col-6"><strong>Братья:</strong> ${profile.brothers_count || 0}</div>
-                            <div class="col-6"><strong>Сёстры:</strong> ${profile.sisters_count || 0}</div>
+                            <div class="col-6"><strong>Школа:</strong> ${profile.school || '-'}</div>
+                            <div class="col-6"><strong>Адрес:</strong> ${profile.home_address || '-'}</div>
                         </div>
                     `;
                 }
@@ -286,7 +270,6 @@
             }
         });
 
-        // Загрузка тестов
         async function loadMyTests() {
             try {
                 const res = await fetch('/api/my-tests', {
@@ -361,13 +344,11 @@
             return '<span class="badge bg-secondary">Назначен</span>';
         }
 
-        // Прохождение теста
         async function startTest(questionnaireId, title) {
             currentQuestionnaireId = questionnaireId;
             document.getElementById('testTitle').textContent = title;
             
             try {
-                // Начинаем/возобновляем тест
                 const startRes = await fetch('/api/results/start', {
                     method: 'POST',
                     headers: {
@@ -380,7 +361,6 @@
                 const startData = await startRes.json();
                 currentResultId = startData.resultId;
 
-                // Загружаем вопросы
                 const qRes = await fetch(`/api/questionnaires/${questionnaireId}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
@@ -467,7 +447,6 @@
                 `;
             }).join('');
 
-            // Обработчики для шкалы
             container.querySelectorAll('input[type="range"]').forEach(range => {
                 range.addEventListener('input', function() {
                     const idx = this.name.split('_')[1];
@@ -480,26 +459,22 @@
             const answers = {};
             const form = document.getElementById('testQuestions');
             
-            // Radio buttons
             form.querySelectorAll('input[type="radio"]:checked').forEach(radio => {
                 const idx = radio.name.split('_')[1];
                 answers[idx] = radio.value;
             });
             
-            // Checkboxes
             form.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                 const idx = cb.name.split('_')[1].replace('[]', '');
                 if (!answers[idx]) answers[idx] = [];
                 if (cb.checked) answers[idx].push(cb.value);
             });
             
-            // Range inputs
             form.querySelectorAll('input[type="range"]').forEach(range => {
                 const idx = range.name.split('_')[1];
                 answers[idx] = parseInt(range.value);
             });
             
-            // Textareas
             form.querySelectorAll('textarea').forEach(ta => {
                 const idx = ta.name.split('_')[1];
                 answers[idx] = ta.value;
@@ -567,7 +542,6 @@
             window.location.href = '/';
         }
 
-        // Загрузка при старте
         loadUserInfo();
     </script>
 </body>

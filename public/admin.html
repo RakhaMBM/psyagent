@@ -140,13 +140,12 @@
                                     <thead class="table-light">
                                         <tr>
                                             <th>Группа</th>
-                                            <th>Курс</th>
                                             <th>Студентов</th>
                                             <th>Прошли</th>
                                         </tr>
                                     </thead>
                                     <tbody id="groupsTableBody">
-                                        <tr><td colspan="4" class="text-center text-muted">Загрузка...</td></tr>
+                                        <tr><td colspan="3" class="text-center text-muted">Загрузка...</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -169,24 +168,15 @@
             <div class="card mb-4">
                 <div class="card-body">
                     <div class="row g-3">
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <input type="text" class="form-control" id="searchStudent" placeholder="Поиск по ФИО...">
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-md-3">
                             <select class="form-select" id="filterGroup">
                                 <option value="">Все группы</option>
                             </select>
                         </div>
-                        <div class="col-md-2">
-                            <select class="form-select" id="filterCourse">
-                                <option value="">Все курсы</option>
-                                <option value="1">1 курс</option>
-                                <option value="2">2 курс</option>
-                                <option value="3">3 курс</option>
-                                <option value="4">4 курс</option>
-                            </select>
-                        </div>
-                        <div class="col-md-2">
+                        <div class="col-md-3">
                             <button class="btn btn-outline-secondary w-100" onclick="loadStudents()">
                                 <i class="bi bi-search me-1"></i>Применить
                             </button>
@@ -206,7 +196,7 @@
                                     <th>Дата рождения</th>
                                     <th>Возраст</th>
                                     <th>Группа</th>
-                                    <th>Курс</th>
+                                    <th>Школа</th>
                                     <th>Согласие</th>
                                     <th>Действия</th>
                                 </tr>
@@ -230,7 +220,6 @@
             </div>
 
             <div class="row g-4" id="testsList">
-                <!-- Карточки тестов будут загружены здесь -->
             </div>
         </section>
 
@@ -254,15 +243,6 @@
                                 <option value="">Все группы</option>
                             </select>
                         </div>
-                        <div class="col-md-2">
-                            <select class="form-select" id="resultCourse">
-                                <option value="">Все курсы</option>
-                                <option value="1">1 курс</option>
-                                <option value="2">2 курс</option>
-                                <option value="3">3 курс</option>
-                                <option value="4">4 курс</option>
-                            </select>
-                        </div>
                         <div class="col-md-3">
                             <select class="form-select" id="resultTest">
                                 <option value="">Все тесты</option>
@@ -273,6 +253,9 @@
                         </div>
                         <div class="col-md-2">
                             <input type="date" class="form-control" id="dateTo">
+                        </div>
+                        <div class="col-md-2">
+                            <button class="btn btn-outline-secondary w-100" onclick="loadResults()">Применить</button>
                         </div>
                     </div>
                 </div>
@@ -369,17 +352,8 @@
                                 <input type="text" class="form-control" name="group_name" placeholder="ПО-41">
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Курс</label>
-                                <select class="form-select" name="course">
-                                    <option value="1">1</option>
-                                    <option value="2">2</option>
-                                    <option value="3">3</option>
-                                    <option value="4">4</option>
-                                </select>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Специальность</label>
-                                <input type="text" class="form-control" name="speciality">
+                                <label class="form-label">Школа окончания</label>
+                                <input type="text" class="form-control" name="school" placeholder="№123 г. Алматы">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Email</label>
@@ -388,6 +362,10 @@
                             <div class="col-md-6">
                                 <label class="form-label">Телефон</label>
                                 <input type="tel" class="form-control" name="phone">
+                            </div>
+                            <div class="col-md-12">
+                                <label class="form-label">Домашний адрес</label>
+                                <input type="text" class="form-control" name="home_address" placeholder="ул. Примерная, д. 1, кв. 2">
                             </div>
                         </div>
 
@@ -405,14 +383,6 @@
                             <div class="col-md-6">
                                 <label class="form-label">С кем проживает</label>
                                 <input type="text" class="form-control" name="lives_with" placeholder="Мама, папа, бабушка...">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Братья</label>
-                                <input type="number" class="form-control" name="brothers_count" value="0" min="0">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Сёстры</label>
-                                <input type="number" class="form-control" name="sisters_count" value="0" min="0">
                             </div>
                         </div>
                     </div>
@@ -454,7 +424,6 @@
                         </div>
 
                         <div id="questionsContainer">
-                            <!-- Вопросы будут добавляться здесь -->
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -543,7 +512,6 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body" id="resultModalBody">
-                    <!-- Контент загружается динамически -->
                 </div>
             </div>
         </div>
@@ -563,7 +531,6 @@
                         <div class="mb-3">
                             <label class="form-label">Выберите студентов</label>
                             <div id="assignStudentsList" class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
-                                <!-- Чекбоксы студентов -->
                             </div>
                         </div>
                         <div class="mb-3">
@@ -581,9 +548,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="app.js"></script>
     <script>
-        // Инициализация
         let token = localStorage.getItem('token');
         let currentUser = JSON.parse(localStorage.getItem('user'));
 
@@ -593,7 +558,6 @@
 
         document.getElementById('adminName').textContent = currentUser.fullName;
 
-        // Загрузка данных при старте
         loadDashboardStats();
         loadGroupsForFilters();
         loadStudents();
@@ -601,7 +565,6 @@
         loadConsents();
         loadTestsForFilter();
 
-        // ========== НАВИГАЦИЯ ==========
         function showSection(sectionName) {
             document.querySelectorAll('main > section').forEach(s => s.classList.add('d-none'));
             document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
@@ -609,12 +572,10 @@
             document.getElementById(`section-${sectionName}`).classList.remove('d-none');
             event.target.closest('.nav-link')?.classList.add('active');
 
-            // Перезагрузка данных секции
             if (sectionName === 'dashboard') loadDashboardStats();
             if (sectionName === 'results') loadResults();
         }
 
-        // ========== ДАШБОРД ==========
         async function loadDashboardStats() {
             try {
                 const [studentsRes, groupsRes, consentsRes] = await Promise.all([
@@ -629,7 +590,7 @@
 
                 document.getElementById('totalStudents').textContent = students.length;
                 
-                let completed = 0, pending = 0;
+                let completed = 0;
                 groups.forEach(g => {
                     completed += parseInt(g.completed_tests) || 0;
                 });
@@ -640,15 +601,13 @@
                                    students.filter(s => s.age < 18 && !s.consent_status).length;
                 document.getElementById('pendingConsents').textContent = noConsent;
 
-                // Таблица групп
                 const tbody = document.getElementById('groupsTableBody');
                 if (groups.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Нет данных</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">Нет данных</td></tr>';
                 } else {
                     tbody.innerHTML = groups.map(g => `
                         <tr>
                             <td>${g.group_name || '-'}</td>
-                            <td>${g.course || '-'} курс</td>
                             <td>${g.total_students}</td>
                             <td><span class="badge bg-success">${g.completed_tests || 0}</span></td>
                         </tr>
@@ -657,17 +616,14 @@
             } catch (e) { console.error(e); }
         }
 
-        // ========== СТУДЕНТЫ ==========
         async function loadStudents() {
             try {
                 const params = new URLSearchParams();
                 const search = document.getElementById('searchStudent')?.value;
                 const group = document.getElementById('filterGroup')?.value;
-                const course = document.getElementById('filterCourse')?.value;
                 
                 if (search) params.append('search', search);
                 if (group) params.append('group', group);
-                if (course) params.append('course', course);
 
                 const res = await fetch(`/api/students?${params}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -686,7 +642,7 @@
                         <td>${formatDate(s.birth_date)}</td>
                         <td>${s.age} лет</td>
                         <td>${s.group_name || '-'}</td>
-                        <td>${s.course || '-'} курс</td>
+                        <td>${s.school || '-'}</td>
                         <td>${getConsentBadge(s.consent_status, s.age)}</td>
                         <td>
                             <div class="btn-group btn-group-sm">
@@ -719,7 +675,6 @@
             document.getElementById('studentModalTitle').textContent = studentId ? 'Редактировать студента' : 'Добавить студента';
             
             if (studentId) {
-                // TODO: загрузка данных студента
             }
             
             new bootstrap.Modal(document.getElementById('studentModal')).show();
@@ -767,7 +722,6 @@
             } catch (e) { alert('Ошибка удаления'); }
         }
 
-        // ========== ТЕСТЫ ==========
         async function loadTests() {
             try {
                 const res = await fetch('/api/questionnaires', {
@@ -813,7 +767,7 @@
         function openTestModal() {
             questionCounter = 0;
             document.getElementById('questionsContainer').innerHTML = '';
-            addQuestion(); // Добавляем первый вопрос
+            addQuestion();
             new bootstrap.Modal(document.getElementById('testModal')).show();
         }
 
@@ -965,11 +919,9 @@
             }
         });
 
-        // Назначение теста
         async function openAssignModal(testId, testName) {
             document.getElementById('assignQuestionnaireId').value = testId;
             
-            // Загрузка студентов
             const res = await fetch('/api/students', { headers: { 'Authorization': `Bearer ${token}` }});
             const students = await res.json();
             
@@ -1020,7 +972,6 @@
             }
         });
 
-        // ========== РЕЗУЛЬТАТЫ ==========
         async function loadTestsForFilter() {
             try {
                 const res = await fetch('/api/questionnaires', { headers: { 'Authorization': `Bearer ${token}` }});
@@ -1039,13 +990,11 @@
             try {
                 const params = new URLSearchParams();
                 const group = document.getElementById('resultGroup')?.value;
-                const course = document.getElementById('resultCourse')?.value;
                 const test = document.getElementById('resultTest')?.value;
                 const from = document.getElementById('dateFrom')?.value;
                 const to = document.getElementById('dateTo')?.value;
                 
                 if (group) params.append('groupId', group);
-                if (course) params.append('courseId', course);
                 if (test) params.append('questionnaireId', test);
                 if (from) params.append('startDate', from);
                 if (to) params.append('endDate', to);
@@ -1132,7 +1081,6 @@
             }
         }
 
-        // ========== СОГЛАСИЯ ==========
         async function loadConsents() {
             try {
                 const res = await fetch('/api/consents', { headers: { 'Authorization': `Bearer ${token}` }});
@@ -1163,9 +1111,7 @@
                     `;
                 }).join('');
 
-                // Заполняем селект для модалки
                 const select = document.getElementById('consentStudentSelect');
-                // Уникальные студенты без подтверждённого согласия
                 const uniqueStudents = [...new Map(consents.map(c => [c.user_id, c])).values()];
                 select.innerHTML = '<option value="">Выберите студента</option>' +
                     uniqueStudents.map(c => `<option value="${c.user_id}">${c.student_name}</option>`).join('');
@@ -1230,7 +1176,6 @@
             });
         }
 
-        // ========== СПРАВОЧНИКИ ==========
         async function loadGroupsForFilters() {
             try {
                 const res = await fetch('/api/groups', { headers: { 'Authorization': `Bearer ${token}` }});
@@ -1247,7 +1192,6 @@
             } catch (e) {}
         }
 
-        // ========== ПОЛЕЗНЫЕ ФУНКЦИИ ==========
         function formatDate(dateStr) {
             if (!dateStr) return '-';
             return new Date(dateStr).toLocaleDateString('ru-RU');
@@ -1264,8 +1208,7 @@
             window.location.href = '/';
         }
 
-        // Автоматическая перезагрузка результатов при изменении фильтров
-        ['resultGroup', 'resultCourse', 'resultTest', 'dateFrom', 'dateTo'].forEach(id => {
+        ['resultGroup', 'resultTest', 'dateFrom', 'dateTo'].forEach(id => {
             document.getElementById(id)?.addEventListener('change', loadResults);
         });
     </script>
