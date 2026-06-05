@@ -313,8 +313,8 @@ app.post('/api/students', authenticateToken, requireAdmin, async (req, res) => {
         try {
             const [result] = await conn.execute(
                 `INSERT INTO users (username, password, full_name, role, birth_date, group_name, course, specialty, email, phone)
-                 VALUES (?, ?, ?, 'student', ?, ?, ?, ?, ?, ?)`,
-                [username, hashedPassword, full_name, birth_date, group_name, course, specialty, email, phone]
+                VALUES (?, ?, ?, 'student', ?, ?, ?, ?, ?, ?)`,
+                [username, hashedPassword, full_name, birth_date, group_name || null, course || null, specialty || null, email || null, phone || null]
             );
             
             const userId = result.insertId;
