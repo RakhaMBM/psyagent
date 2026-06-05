@@ -6,6 +6,7 @@ const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'psych-diagnostic-secret-key-2024';
@@ -50,7 +51,7 @@ async function testConnection() {
 testConnection();
 
 // ============================================
-// АУТЕНТИФИКАЦИЯ И МIDDLEWARE
+// АУТЕНТИФИКАЦИЯ И MIDDLEWARE
 // ============================================
 
 // Middleware проверки JWT токена
@@ -184,7 +185,6 @@ app.post('/api/auth/login', async (req, res) => {
                 fullName: user.full_name,
                 role: user.role,
                 groupName: user.group_name,
-                course: user.course,
                 birthDate: user.birth_date
             }
         });
@@ -198,7 +198,7 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
     try {
         const [users] = await pool.execute(
-            'SELECT id, username, full_name, role, birth_date, group_name, course, specialty, email, phone, created_at FROM users WHERE id = ?',
+            'SELECT id, username, full_name, role, birth_date, group_name, email, phone, created_at FROM users WHERE id = ?',
             [req.user.id]
         );
         
@@ -249,11 +249,11 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
 // Получение списка всех студентов
 app.get('/api/students', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { group, course, search } = req.query;
+        const { group, search } = req.query;
         let query = `
             SELECT u.id, u.username, u.full_name, u.birth_date, u.group_name, 
-                   u.course, u.specialty, u.email, u.phone, u.created_at,
-                   sp.family_type, sp.brothers_count, sp.sisters_count,
+                   u.email, u.phone, u.created_at,
+                   sp.family_type, sp.lives_with, sp.school, sp.home_address,
                    pc.signature_status as consent_status
             FROM users u
             LEFT JOIN student_profiles sp ON u.id = sp.user_id
@@ -266,10 +266,7 @@ app.get('/api/students', authenticateToken, requireAdmin, async (req, res) => {
             query += ' AND u.group_name = ?';
             params.push(group);
         }
-        if (course) {
-            query += ' AND u.course = ?';
-            params.push(parseInt(course));
-        }
+
         if (search) {
             query += ' AND (u.full_name LIKE ? OR u.username LIKE ?)';
             params.push(`%${search}%`, `%${search}%`);
@@ -297,8 +294,8 @@ app.post('/api/students', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const {
             username, password, full_name, birth_date,
-            group_name, course, specialty, email, phone,
-            family_type, lives_with, brothers_count, sisters_count
+            group_name, email, phone,
+            family_type, lives_with, school, home_address
         } = req.body;
         
         if (!username || !password || !full_name || !birth_date) {
@@ -312,17 +309,17 @@ app.post('/api/students', authenticateToken, requireAdmin, async (req, res) => {
         
         try {
             const [result] = await conn.execute(
-                `INSERT INTO users (username, password, full_name, role, birth_date, group_name, course, specialty, email, phone)
-                VALUES (?, ?, ?, 'student', ?, ?, ?, ?, ?, ?)`,
-                [username, hashedPassword, full_name, birth_date, group_name || null, course || null, specialty || null, email || null, phone || null]
+                `INSERT INTO users (username, password, full_name, role, birth_date, group_name, email, phone)
+                VALUES (?, ?, ?, 'student', ?, ?, ?, ?)`,
+                [username, hashedPassword, full_name, birth_date, group_name || null, email || null, phone || null]
             );
             
             const userId = result.insertId;
             
             await conn.execute(
-                `INSERT INTO student_profiles (user_id, family_type, lives_with, brothers_count, sisters_count)
+                `INSERT INTO student_profiles (user_id, family_type, lives_with, school, home_address)
                  VALUES (?, ?, ?, ?, ?)`,
-                [userId, family_type || 'full', lives_with || '', brothers_count || 0, sisters_count || 0]
+                [userId, family_type || 'full', lives_with || '', school || null, home_address || null]
             );
             
             await logAction(req.user.id, 'CREATE_STUDENT', 'user', userId, { fullName: full_name });
@@ -356,19 +353,19 @@ app.put('/api/students/:id', authenticateToken, requireAdmin, async (req, res) =
         try {
             // Обновляем основную информацию
             await conn.execute(
-                `UPDATE users SET full_name = ?, birth_date = ?, group_name = ?, course = ?, 
-                 specialty = ?, email = ?, phone = ?, updated_at = NOW()
+                `UPDATE users SET full_name = ?, birth_date = ?, group_name = ?, 
+                 email = ?, phone = ?, updated_at = NOW()
                  WHERE id = ?`,
-                [data.full_name, data.birth_date, data.group_name, data.course,
-                 data.specialty, data.email, data.phone, id]
+                [data.full_name, data.birth_date, data.group_name, 
+                 data.email, data.phone, id]
             );
             
             // Обновляем профиль
             await conn.execute(
                 `UPDATE student_profiles SET family_type = ?, lives_with = ?, 
-                 brothers_count = ?, sisters_count = ?, updated_at = NOW()
+                 school = ?, home_address = ?, updated_at = NOW()
                  WHERE user_id = ?`,
-                [data.family_type, data.lives_with, data.brothers_count, data.sisters_count, id]
+                [data.family_type, data.lives_with, data.school, data.home_address, id]
             );
             
             await logAction(req.user.id, 'UPDATE_STUDENT', 'user', parseInt(id), data);
@@ -407,7 +404,7 @@ app.delete('/api/students/:id', authenticateToken, requireAdmin, async (req, res
 app.get('/api/profile', authenticateToken, async (req, res) => {
     try {
         const [profiles] = await pool.execute(`
-            SELECT sp.*, u.full_name, u.birth_date, u.group_name, u.course, u.specialty
+            SELECT sp.*, u.full_name, u.birth_date, u.group_name
             FROM student_profiles sp
             JOIN users u ON sp.user_id = u.id
             WHERE sp.user_id = ?
@@ -427,7 +424,7 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
 // Создание/обновление профиля студента
 app.put('/api/profile', authenticateToken, async (req, res) => {
     try {
-        const { family_type, lives_with, brothers_count, sisters_count } = req.body;
+        const { family_type, lives_with, school, home_address } = req.body;
         
         // Проверяем существование профиля
         const [existing] = await pool.execute(
@@ -438,15 +435,15 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
         if (existing.length > 0) {
             await pool.execute(
                 `UPDATE student_profiles SET family_type = ?, lives_with = ?, 
-                 brothers_count = ?, sisters_count = ?, updated_at = NOW()
+                 school = ?, home_address = ?, updated_at = NOW()
                  WHERE user_id = ?`,
-                [family_type, lives_with, brothers_count || 0, sisters_count || 0, req.user.id]
+                [family_type, lives_with, school || null, home_address || null, req.user.id]
             );
         } else {
             await pool.execute(
-                `INSERT INTO student_profiles (user_id, family_type, lives_with, brothers_count, sisters_count)
+                `INSERT INTO student_profiles (user_id, family_type, lives_with, school, home_address)
                  VALUES (?, ?, ?, ?, ?)`,
-                [req.user.id, family_type, lives_with, brothers_count || 0, sisters_count || 0]
+                [req.user.id, family_type, lives_with, school || null, home_address || null]
             );
         }
         
@@ -739,11 +736,11 @@ app.post('/api/results/complete', authenticateToken, checkAgeConsent, async (req
 // Получение всех результатов
 app.get('/api/results', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { groupId, courseId, questionnaireId, startDate, endDate } = req.query;
+        const { groupId, questionnaireId, startDate, endDate } = req.query;
         
         let query = `
             SELECT r.id, r.score, r.status, r.completed_at, r.answers,
-                   u.id as user_id, u.full_name, u.group_name, u.course,
+                   u.id as user_id, u.full_name, u.group_name,
                    q.title as questionnaire_title
             FROM results r
             JOIN users u ON r.user_id = u.id
@@ -755,10 +752,6 @@ app.get('/api/results', authenticateToken, requireAdmin, async (req, res) => {
         if (groupId) {
             query += ' AND u.group_name = ?';
             params.push(groupId);
-        }
-        if (courseId) {
-            query += ' AND u.course = ?';
-            params.push(parseInt(courseId));
         }
         if (questionnaireId) {
             query += ' AND r.questionnaire_id = ?';
@@ -796,15 +789,14 @@ app.get('/api/statistics/groups', authenticateToken, requireAdmin, async (req, r
         const [stats] = await pool.execute(`
             SELECT 
                 u.group_name,
-                u.course,
                 COUNT(DISTINCT u.id) as total_students,
                 COUNT(DISTINCT CASE WHEN r.status = 'completed' THEN r.id END) as completed_tests,
                 AVG(CASE WHEN r.status = 'completed' THEN r.score END) as avg_score
             FROM users u
             LEFT JOIN results r ON u.id = r.user_id
             WHERE u.role = 'student' AND u.is_active = TRUE
-            GROUP BY u.group_name, u.course
-            ORDER BY u.group_name, u.course
+            GROUP BY u.group_name
+            ORDER BY u.group_name
         `);
         
         res.json(stats);
@@ -819,7 +811,7 @@ app.get('/api/export/json', authenticateToken, requireAdmin, async (req, res) =>
     try {
         const [results] = await pool.execute(`
             SELECT 
-                u.full_name, u.group_name, u.course, u.specialty,
+                u.full_name, u.group_name,
                 q.title as test_title,
                 r.score, r.status, r.completed_at,
                 r.answers
@@ -855,7 +847,7 @@ app.get('/api/export/json', authenticateToken, requireAdmin, async (req, res) =>
 app.get('/api/consents', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const [consents] = await pool.execute(`
-            SELECT pc.*, u.full_name as student_name, u.birth_date, u.group_name, u.course,
+            SELECT pc.*, u.full_name as student_name, u.birth_date, u.group_name,
                    admin.full_name as created_by_name
             FROM parental_consents pc
             JOIN users u ON pc.user_id = u.id
@@ -961,10 +953,10 @@ app.get('/api/my-consent', authenticateToken, async (req, res) => {
 app.get('/api/groups', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const [groups] = await pool.execute(`
-            SELECT DISTINCT group_name, course 
+            SELECT DISTINCT group_name 
             FROM users 
             WHERE role = 'student' AND is_active = TRUE AND group_name IS NOT NULL
-            ORDER BY course, group_name
+            ORDER BY group_name
         `);
         res.json(groups);
     } catch (error) {
@@ -1000,10 +992,7 @@ app.listen(PORT, () => {
 ║       Система психологической диагностики студентов       ║
 ║                                                           ║
 ║   Сервер запущен: http://localhost:${PORT}                ║
-║                                                           ║
-║   Логин админа: admin                                     ║
-║   Пароль админа: password                                 ║
-║                                                           ║
+║                                                           ║                          
 ╚═══════════════════════════════════════════════════════════╝
     `);
 });
