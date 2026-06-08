@@ -584,9 +584,14 @@
                     fetch('/api/consents', { headers: { 'Authorization': `Bearer ${token}` }})
                 ]);
 
-                const students = await studentsRes.json();
-                const groups = await groupsRes.json();
-                const consents = await consentsRes.json();
+                const studentsRaw = await studentsRes.json();
+                const groupsRaw = await groupsRes.json();
+                const consentsRaw = await consentsRes.json();
+
+                // ✅ ЗАЩИТА: Проверяем что данные - это массивы
+                const students = Array.isArray(studentsRaw) ? studentsRaw : (studentsRaw?.data || []);
+                const groups = Array.isArray(groupsRaw) ? groupsRaw : (groupsRaw?.data || []);
+                const consents = Array.isArray(consentsRaw) ? consentsRaw : (consentsRaw?.data || []);
 
                 document.getElementById('totalStudents').textContent = students.length;
                 
@@ -598,7 +603,7 @@
                 document.getElementById('pendingTests').textContent = students.length - completed;
                 
                 const noConsent = consents.filter(c => c.signature_status !== 'confirmed').length +
-                                   students.filter(s => s.age < 18 && !s.consent_status).length;
+                students.filter(s => s.age < 18 && !s.consent_status).length;
                 document.getElementById('pendingConsents').textContent = noConsent;
 
                 const tbody = document.getElementById('groupsTableBody');
@@ -628,7 +633,10 @@
                 const res = await fetch(`/api/students?${params}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                const students = await res.json();
+                const studentsRaw = await res.json();
+
+                // ✅ ЗАЩИТА: Проверяем что данные - это массив
+                const students = Array.isArray(studentsRaw) ? studentsRaw : (studentsRaw?.data || []);
 
                 const tbody = document.getElementById('studentsTableBody');
                 if (students.length === 0) {
@@ -727,7 +735,10 @@
                 const res = await fetch('/api/questionnaires', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                const tests = await res.json();
+                const testsRaw = await res.json();
+
+                // ✅ ЗАЩИТА: Проверяем что данные - это массив
+                const tests = Array.isArray(testsRaw) ? testsRaw : (testsRaw?.data || []);
 
                 const container = document.getElementById('testsList');
                 if (tests.length === 0) {
@@ -923,7 +934,10 @@
             document.getElementById('assignQuestionnaireId').value = testId;
             
             const res = await fetch('/api/students', { headers: { 'Authorization': `Bearer ${token}` }});
-            const students = await res.json();
+            const studentsRaw = await res.json();
+            
+            // ✅ ЗАЩИТА: Проверяем что данные - это массив
+            const students = Array.isArray(studentsRaw) ? studentsRaw : (studentsRaw?.data || []);
             
             const list = document.getElementById('assignStudentsList');
             list.innerHTML = students.map(s => `
@@ -975,7 +989,10 @@
         async function loadTestsForFilter() {
             try {
                 const res = await fetch('/api/questionnaires', { headers: { 'Authorization': `Bearer ${token}` }});
-                const tests = await res.json();
+                const testsRaw = await res.json();
+                
+                // ✅ ЗАЩИТА: Проверяем что данные - это массив
+                const tests = Array.isArray(testsRaw) ? testsRaw : (testsRaw?.data || []);
                 
                 ['resultTest'].forEach(selectId => {
                     const select = document.getElementById(selectId);
@@ -1002,7 +1019,10 @@
                 const res = await fetch(`/api/results?${params}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                const results = await res.json();
+                const resultsRaw = await res.json();
+
+                // ✅ ЗАЩИТА: Проверяем что данные - это массив
+                const results = Array.isArray(resultsRaw) ? resultsRaw : (resultsRaw?.data || []);
 
                 const tbody = document.getElementById('resultsTableBody');
                 if (results.length === 0) {
@@ -1036,7 +1056,11 @@
         async function viewResult(resultId) {
             try {
                 const res = await fetch('/api/results', { headers: { 'Authorization': `Bearer ${token}` }});
-                const results = await res.json();
+                const resultsRaw = await res.json();
+                
+                // ✅ ЗАЩИТА: Проверяем что данные - это массив
+                const results = Array.isArray(resultsRaw) ? resultsRaw : (resultsRaw?.data || []);
+                
                 const result = results.find(r => r.id === resultId);
                 
                 if (!result) return;
@@ -1051,7 +1075,7 @@
                         <table class="table table-sm">
                             <thead><tr><th>#</th><th>Ответ</th></tr></thead>
                             <tbody>
-                                ${Object.entries(result.answers).map(([key, val], i) => `
+                                ${Object.entries(result.answers || {}).map(([key, val], i) => `
                                     <tr><td>${parseInt(key)+1}</td><td>${Array.isArray(val) ? val.join(', ') : val}</td></tr>
                                 `).join('')}
                             </tbody>
@@ -1084,7 +1108,10 @@
         async function loadConsents() {
             try {
                 const res = await fetch('/api/consents', { headers: { 'Authorization': `Bearer ${token}` }});
-                const consents = await res.json();
+                const consentsRaw = await res.json();
+
+                // ✅ ЗАЩИТА: Проверяем что данные - это массив
+                const consents = Array.isArray(consentsRaw) ? consentsRaw : (consentsRaw?.data || []);
 
                 const tbody = document.getElementById('consentsTableBody');
                 if (consents.length === 0) {
@@ -1179,7 +1206,10 @@
         async function loadGroupsForFilters() {
             try {
                 const res = await fetch('/api/groups', { headers: { 'Authorization': `Bearer ${token}` }});
-                const groups = await res.json();
+                const groupsRaw = await res.json();
+                
+                // ✅ ЗАЩИТА: Проверяем что данные - это массив
+                const groups = Array.isArray(groupsRaw) ? groupsRaw : (groupsRaw?.data || []);
                 
                 ['filterGroup', 'resultGroup'].forEach(selectId => {
                     const select = document.getElementById(selectId);

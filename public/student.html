@@ -292,7 +292,11 @@
                     throw new Error(err.error);
                 }
                 
-                const tests = await res.json();
+                const testsRaw = await res.json();
+                
+                // ✅ ЗАЩИТА: Проверяем что данные - это массив
+                const tests = Array.isArray(testsRaw) ? testsRaw : (testsRaw?.data || []);
+                
                 const container = document.getElementById('testsContainer');
                 
                 if (tests.length === 0) {
@@ -375,9 +379,12 @@
         }
 
         function renderQuestions(questions) {
+            // ✅ ЗАЩИТА: Проверяем что questions - это массив
+            const questionsArray = Array.isArray(questions) ? questions : [];
+            
             const container = document.getElementById('testQuestions');
             
-            container.innerHTML = questions.map((q, idx) => {
+            container.innerHTML = questionsArray.map((q, idx) => {
                 let inputHtml = '';
                 
                 switch (q.question_type) {
