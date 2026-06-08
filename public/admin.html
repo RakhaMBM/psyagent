@@ -7,6 +7,9 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link rel="stylesheet" href="styles.css">
+    
+    <!-- 🆕 Библиотека для работы с Excel в браузере -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body class="dashboard-body">
     <!-- Навигация -->
@@ -118,6 +121,10 @@
                             <div class="d-grid gap-2">
                                 <button class="btn btn-outline-primary text-start" onclick="showSection('students'); openStudentModal()">
                                     <i class="bi bi-person-plus me-2"></i>Добавить студента
+                                </button>
+                                <!-- 🆕 Кнопка импорта из Excel -->
+                                <button class="btn btn-outline-warning text-start" onclick="openImportModal()">
+                                    <i class="bi bi-file-earmark-spreadsheet me-2"></i>Импорт из Excel
                                 </button>
                                 <button class="btn btn-outline-success text-start" onclick="showSection('tests'); openTestModal()">
                                     <i class="bi bi-plus-circle me-2"></i>Создать тест
@@ -547,6 +554,146 @@
         </div>
     </div>
 
+    <!-- 🆕 Модальное окно: Импорт студентов из Excel -->
+    <div class="modal fade" id="importModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title">
+                        <i class="bi bi-file-earmark-excel me-2"></i>Импорт студентов из Excel
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                
+                <div class="modal-body">
+                    <!-- Инструкция -->
+                    <div class="alert alert-info mb-3">
+                        <h6 class="alert-heading"><i class="bi bi-info-circle me-2"></i>Инструкция</h6>
+                        <ol class="mb-0 small ps-4">
+                            <li><strong>Скачайте шаблон Excel</strong> кнопкой ниже</li>
+                            <li><strong>Заполните данными студентов</strong> (см. формат колонок)</li>
+                            <li><strong>Сохраните</strong> файл в формате <code>.xlsx</code></li>
+                            <li><strong>Загрузите</strong> файл и нажмите "Импортировать"</li>
+                        </ol>
+                    </div>
+
+                    <!-- Скачивание шаблона + Формат колонок -->
+                    <div class="mb-3 d-flex align-items-center gap-2 flex-wrap">
+                        <button class="btn btn-sm btn-primary" onclick="downloadExcelTemplate()">
+                            <i class="bi bi-download me-1"></i>Скачать шаблон Excel (.xlsx)
+                        </button>
+                        
+                        <span class="badge bg-light text-dark border fw-bold">Формат:</span>
+                        <div class="d-flex flex-wrap gap-1">
+                            <span class="badge bg-success">Логин ✅</span>
+                            <span class="badge bg-secondary">Пароль</span>
+                            <span class="badge bg-success">ФИО ✅</span>
+                            <span class="badge bg-light border">Дата рождения</span>
+                            <span class="badge bg-light border">Группа</span>
+                            <span class="badge bg-light border">Школа оконч.</span>
+                            <span class="badge bg-light border">Email</span>
+                            <span class="badge bg-light border">Телефон</span>
+                            <span class="badge bg-light border">Адрес</span>
+                            <span class="badge bg-light border">Тип семьи</span>
+                            <span class="badge bg-light border">С кем проживает</span>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <!-- Загрузка файла -->
+                    <div class="mb-3">
+                        <label for="excelFileInput" class="form-label fw-bold">
+                            <i class="bi bi-upload me-1"></i>Выберите Excel файл для импорта
+                        </label>
+                        <input type="file" class="form-control" id="excelFileInput" 
+                               accept=".xlsx,.xls" required>
+                        <div class="form-text">
+                            Поддерживаемые форматы: .xlsx, .xls (максимальный размер: 5MB)<br>
+                            <strong>Обязательные колонки:</strong> Логин, ФИО<br>
+                            <small class="text-muted">Если "Пароль" не указан — будет сгенерирован автоматически (8 символов)</small>
+                        </div>
+                    </div>
+
+                    <!-- Предпросмотр данных -->
+                    <div id="importPreviewSection" class="d-none mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0"><i class="bi bi-table me-1"></i>Предпросмотр данных:</h6>
+                            <span class="badge bg-primary fs-6" id="previewRowCount">0 строк</span>
+                        </div>
+                        
+                        <div class="table-responsive border rounded" style="max-height: 350px; overflow-y: auto;">
+                            <table class="table table-sm table-hover table-striped mb-0">
+                                <thead class="table-light sticky-top" id="previewTableHead"></thead>
+                                <tbody id="previewTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Результат импорта -->
+                    <div id="importResultSection" class="d-none">
+                        <hr>
+                        <h6 class="mb-3"><i class="bi bi-check2-square me-1"></i>Результат импорта:</h6>
+                        
+                        <!-- Статистика -->
+                        <div id="importStatsCards" class="row g-2 mb-3"></div>
+                        
+                        <!-- Успешно импортированные -->
+                        <div id="importSuccessList" class="mb-3 d-none">
+                            <h6 class="text-success small mb-2">
+                                <i class="bi bi-person-check me-1"></i>Успешно импортировано (<span id="successCount">0</span>):
+                            </h6>
+                            
+                            <div class="alert alert-warning alert-small py-2 mb-2">
+                                <small><i class="bi bi-key me-1"></i>
+                                <strong>Сохраните эти пароли!</strong> Студенты смогут войти используя логин и пароль ниже.</small>
+                            </div>
+
+                            <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                                <table class="table table-sm table-bordered table-hover mb-0">
+                                    <thead class="table-success">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>ФИО</th>
+                                            <th>Логин</th>
+                                            <th>Пароль</th>
+                                            <th>Группа</th>
+                                            <th>Email</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="successTableBody"></tbody>
+                                </table>
+                            </div>
+                            
+                            <div class="mt-2">
+                                <button class="btn btn-sm btn-outline-secondary" onclick="copyPasswordsToClipboard()">
+                                    <i class="bi bi-clipboard me-1"></i>Копировать все пароли
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Ошибки -->
+                        <div id="importErrorList" class="d-none">
+                            <h6 class="text-danger small mb-2">
+                                <i class="bi bi-exclamation-octagon me-1"></i>Ошибки (<span id="errorCount">0</span>):
+                            </h6>
+                            <ul class="list-group list-group-flush small" id="errorListUl"></ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-lg me-1"></i>Закрыть
+                    </button>
+                    <button type="button" class="btn btn-warning fw-bold" id="startImportBtn" onclick="executeImport()" disabled>
+                        <i class="bi bi-upload me-1"></i>Импортировать студентов
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let token = localStorage.getItem('token');
@@ -575,6 +722,8 @@
             if (sectionName === 'dashboard') loadDashboardStats();
             if (sectionName === 'results') loadResults();
         }
+
+        // ==================== ЗАЩИЩЁННЫЕ ФУНКЦИИ (Array.isArray) ====================
 
         async function loadDashboardStats() {
             try {
@@ -1241,6 +1390,273 @@
         ['resultGroup', 'resultTest', 'dateFrom', 'dateTo'].forEach(id => {
             document.getElementById(id)?.addEventListener('change', loadResults);
         });
+
+        // ==================== ИМПОРТ EXCEL ====================
+
+        let excelDataForImport = [];
+
+        function openImportModal() {
+            document.getElementById('excelFileInput').value = '';
+            document.getElementById('importPreviewSection').classList.add('d-none');
+            document.getElementById('importResultSection').classList.add('d-none');
+            document.getElementById('startImportBtn').disabled = true;
+            excelDataForImport = [];
+            new bootstrap.Modal(document.getElementById('importModal')).show();
+        }
+
+        document.getElementById('excelFileInput')?.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (!file.name.match(/\.(xlsx|xls)$/i)) {
+                alert('❌ Пожалуйста выберите Excel файл (.xlsx или .xls)');
+                this.value = '';
+                return;
+            }
+
+            if (file.size > 5 * 1024 * 1024) {
+                alert('❌ Слишком большой файл! Максимум 5MB');
+                this.value = '';
+                return;
+            }
+
+            const previewSection = document.getElementById('importPreviewSection');
+            previewSection.classList.remove('d-none');
+            document.getElementById('previewTableHead').innerHTML = '<tr><td colspan="11" class="text-center py-3"><div class="spinner-border spinner-border-sm me-2"></div></tr>';
+            document.getElementById('previewTableBody').innerHTML = '';
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    excelDataForImport = XLSX.utils.sheet_to_json(worksheet);
+                    
+                    if (excelDataForImport.length === 0) {
+                        alert('⚠️ Файл пустой или не содержит данных');
+                        previewSection.classList.add('d-none');
+                        return;
+                    }
+
+                    renderPreviewTable(excelDataForImport);
+                    document.getElementById('startImportBtn').disabled = false;
+                    console.log(`📊 Загружено ${excelDataForImport.length} студентов`);
+                } catch (err) {
+                    alert('❌ Ошибка чтения файла: ' + err.message);
+                    excelDataForImport = [];
+                    previewSection.classList.add('d-none');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        function renderPreviewTable(data) {
+            const thead = document.getElementById('previewTableHead');
+            const tbody = document.getElementById('previewTableBody');
+            const countSpan = document.getElementById('previewRowCount');
+            if (!data || data.length === 0) return;
+            
+            const headers = Object.keys(data[0]);
+            thead.innerHTML = '<tr>' + headers.map(h => `<th class="small text-nowrap">${h}</th>`).join('') + '</tr>';
+            
+            const previewData = data.slice(0, 20);
+            tbody.innerHTML = previewData.map(row => 
+                '<tr>' + headers.map(h => {
+                    let val = row[h];
+                    if (val === undefined || val === null) val = '';
+                    if (h.toLowerCase().includes('пароль') || h.toLowerCase().includes('password')) val = '••••••••';
+                    return `<td class="small">${val}</td>`;
+                }).join('') + '</tr>'
+            ).join('');
+            
+            countSpan.textContent = `${data.length} строк${data.length > 20 ? ' (показано 20)' : ''}`;
+        }
+
+        function downloadExcelTemplate() {
+            const templateData = [
+                {
+                    'Логин': 'ivanov.i',
+                    'Пароль': '',
+                    'ФИО': 'Иванов Иван Иванович',
+                    'Дата рождения': '2008-05-15',
+                    'Группа': 'ИС-51',
+                    'Школа окончания': 'Школа-гимназия №45 г.Алматы',
+                    'Email': 'ivanov@student.collegeit.kz',
+                    'Телефон': '87771234567',
+                    'Домашний адрес': 'г.Алматы, ул.Абая д.10 кв.15',
+                    'Тип семьи': 'Полная',
+                    'С кем проживает': 'Мама, папа, младшая сестра'
+                },
+                {
+                    'Логин': 'petrova.m',
+                    'Пароль': 'MyPass123',
+                    'ФИО': 'Петрова Мария Сергеевна',
+                    'Дата рождения': '2009-03-20',
+                    'Группа': 'ИС-54',
+                    'Школа окончания': 'Лицей №123 г.Алматы',
+                    'Email': 'petrova.m@mail.ru',
+                    'Телефон': '87779876543',
+                    'Домашний адрес': 'г.Алматы, мкр.Наурыз д.25 кв.8',
+                    'Тип семьи': 'Неполная',
+                    'С кем проживает': 'Мама, бабушка'
+                },
+                {
+                    'Логин': 'sidorov.a',
+                    'Пароль': '',
+                    'ФИО': 'Сидоров Алексей Петрович',
+                    'Дата рождения': '2009-11-08',
+                    'Группа': 'ПО-41',
+                    'Школа окончания': '',
+                    'Email': '',
+                    'Телефон': '87471112233',
+                    'Домашний адрес': '',
+                    'Тип семьи': 'Опека',
+                    'С кем проживает': 'Опекун (тётя)'
+                },
+                {
+                    'Логин': 'kuznetsova.e',
+                    'Пароль': '',
+                    'ФИО': 'Кузнецова Елена Дмитриевна',
+                    'Дата рождения': '2010-01-25',
+                    'Группа': '',
+                    'Школа окончания': '№67 г.Талдыкорган',
+                    'Email': 'elena.k@mail.kz',
+                    'Телефон': '',
+                    'Домашний адрес': 'г.Талдыкорган, ул.Гагарина д.5',
+                    'Тип семьи': 'Полная',
+                    'С кем проживает': ''
+                }
+            ];
+            
+            const ws = XLSX.utils.json_to_sheet(templateData);
+            ws['!cols'] = [
+                { wch: 14 }, { wch: 12 }, { wch: 35 }, { wch: 14 }, { wch: 10 },
+                { wch: 28 }, { wch: 28 }, { wch: 14 }, { wch: 35 }, { wch: 14 }, { wch: 30 }
+            ];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Студенты');
+            XLSX.writeFile(wb, 'шаблон_импорта_студентов.xlsx');
+        }
+
+        async function executeImport() {
+            if (excelDataForImport.length === 0) { alert('⚠️ Нет данных для импорта'); return; }
+            
+            const fileInput = document.getElementById('excelFileInput');
+            if (!fileInput.files.length) { alert('⚠️ Выберите файл для импорта'); return; }
+            
+            if (!confirm(`Вы уверены что хотите импортировать ${excelDataForImport.length} студентов?\n\n⚠️ Студенты с таким же логином будут ПРОПУЩЕНЫ.`)) return;
+            
+            const importBtn = document.getElementById('startImportBtn');
+            const originalText = importBtn.innerHTML;
+            importBtn.disabled = true;
+            importBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Импортирование...';
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                
+                const response = await fetch('/api/students/import', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+                
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Ошибка сервера при импорте');
+                
+                showImportResult(result);
+                loadStudents();
+                loadDashboardStats();
+                loadGroupsForFilters();
+                
+            } catch (error) {
+                alert('❌ Ошибка импорта: ' + error.message);
+            } finally {
+                importBtn.disabled = false;
+                importBtn.innerHTML = originalText;
+            }
+        }
+
+        function showImportResult(result) {
+            const resultSection = document.getElementById('importResultSection');
+            const statsCards = document.getElementById('importStatsCards');
+            const successList = document.getElementById('importSuccessList');
+            const errorList = document.getElementById('importErrorList');
+            
+            resultSection.classList.remove('d-none');
+            
+            statsCards.innerHTML = `
+                <div class="col-md-4">
+                    <div class="text-center p-3 rounded border bg-light">
+                        <h3 class="text-dark mb-0">${result.total}</h3>
+                        <small class="text-muted">Всего строк</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center p-3 rounded border bg-success text-white">
+                        <h3 class="mb-0">${result.success}</h3>
+                        <small>✅ Успешно</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center p-3 rounded border bg-danger text-white">
+                        <h3 class="mb-0">${result.skipped}</h3>
+                        <small>❌ Пропущено</small>
+                    </div>
+                </div>
+            `;
+            
+            if (result.imported && result.imported.length > 0) {
+                successList.classList.remove('d-none');
+                document.getElementById('successCount').textContent = result.imported.length;
+                document.getElementById('successTableBody').innerHTML = result.imported.map((s, idx) => `
+                    <tr>
+                        <td>${idx + 1}</td>
+                        <td class="fw-semibold">${s.full_name}</td>
+                        <td><code>${s.username}</code></td>
+                        <td><mark class="px-1">${s.password}</mark></td>
+                        <td>${s.group_name || '-'}</td>
+                        <td class="small">${s.email || '-'}</td>
+                    </tr>
+                `).join('');
+            } else {
+                successList.classList.add('d-none');
+            }
+            
+            if (result.errors && result.errors.length > 0) {
+                errorList.classList.remove('d-none');
+                document.getElementById('errorCount').textContent = result.errors.length;
+                document.getElementById('errorListUl').innerHTML = result.errors.map(e => `
+                    <li class="list-group-item list-group-item-danger text-danger">
+                        <strong>Строка ${e.row}:</strong> ${e.error}
+                    </li>
+                `).join('');
+            } else {
+                errorList.classList.add('d-none');
+            }
+            
+            setTimeout(() => { resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300);
+        }
+
+        function copyPasswordsToClipboard() {
+            const rows = document.querySelectorAll('#successTableBody tr');
+            if (rows.length === 0) { alert('Нет данных для копирования'); return; }
+            
+            let text = 'Логин\tПароль\tФИО\n';
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                if (cells.length >= 4) text += `${cells[2].textContent}\t${cells[3].textContent}\t${cells[1].textContent}\n`;
+            });
+            
+            navigator.clipboard.writeText(text).then(() => {
+                alert('✅ Пароли скопированы!\n\nВставьте в Excel или Word (Ctrl+V).');
+            }).catch(err => {
+                alert('Не удалось скопировать. Выделите таблицу вручную и Ctrl+C');
+            });
+        }
+        // ==================== КОНЕЦ ИМПОРТА EXCEL ====================
     </script>
 </body>
 </html>

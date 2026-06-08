@@ -984,6 +984,215 @@ app.get('/consent', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'consent.html'));
 });
 
+
+// ==================== ИМПОРТ СТУДЕНТОВ ИЗ EXCEL ====================
+
+// Настройка загрузки файлов Excel
+const uploadExcel = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 }, // Максимум 5MB
+    fileFilter: (req, file, cb) => {
+        if (file.originalname.match(/\.(xlsx|xls)$/i)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Только файлы .xlsx или .xls'));
+        }
+    }
+});
+
+/**
+ * POST /api/students/import
+ * Импорт студентов из Excel файла
+ * 
+ * Формат колонок:
+ * Логин | Пароль | ФИО | Дата рождения | Группа | Школа окончания | Email | Телефон | Домашний адрес | Тип семьи | С кем проживает
+ */
+app.post('/api/students/import', uploadExcel.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'Файл не загружен' });
+        }
+
+        console.log(`\n📂 [IMPORT] Загружен файл: ${req.file.originalname} (${(req.file.size/1024).toFixed(1)} KB)`);
+
+        // Читаем Excel
+        const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+        console.log(`📊 [IMPORT] Найдено строк: ${rawData.length}`);
+
+        if (rawData.length === 0) {
+            return res.status(400).json({ error: 'Excel файл пустой' });
+        }
+
+        const results = {
+            total: rawData.length,
+            success: 0,
+            errors: [],
+            skipped: 0,
+            imported: []
+        };
+
+        // Обрабатываем каждую строку
+        for (let i = 0; i < rawData.length; i++) {
+            const row = rawData[i];
+            const rowNum = i + 2; // +2 т.к. строка 1 - заголовок
+
+            try {
+                // ====== Извлекаем данные по РУССКИМ названиям колонок ======
+                
+                // ОБЯЗАТЕЛЬНЫЕ ПОЛЯ
+                const username = String(row['Логин'] || row['username'] || '').trim();
+                const fullName = String(row['ФИО'] || row['full_name'] || '').trim();
+
+                // Валидация обязательных полей
+                if (!username || !fullName) {
+                    results.errors.push({
+                        row: rowNum,
+                        error: `Отсутствуют обязательные поля: "Логин" и/или "ФИО"`
+                    });
+                    results.skipped++;
+                    continue;
+                }
+
+                // Проверка на дубликат пользователя
+                const [existing] = await db.query(
+                    'SELECT id FROM users WHERE username = ?',
+                    [username]
+                );
+
+                if (existing && existing.length > 0) {
+                    results.errors.push({
+                        row: rowNum,
+                        error: `Студент с логином "${username}" уже существует`
+                    });
+                    results.skipped++;
+                    continue;
+                }
+
+                // ОПЦИОНАЛЬНЫЕ ПОЛЯ
+                let password = String(row['Пароль'] || row['password'] || '').trim();
+                
+                // Генерируем пароль если не указан
+                if (!password) {
+                    const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+                    password = '';
+                    for (let p = 0; p < 8; p++) {
+                        password += chars.charAt(Math.floor(Math.random() * chars.length));
+                    }
+                }
+
+                // Хешируем пароль
+                const hashedPassword = await bcrypt.hash(password, 10);
+
+                // Основные данные студента
+                const birthDate = row['Дата рождения'] || row['Дата_рождения'] || row['birth_date'] || null;
+                const groupName = row['Группа'] || row['group_name'] || null;
+                const school = row['Школа окончания'] || row['Школа'] || row['school'] || null;
+                const email = row['Email'] || row['email'] || null;
+                const phone = row['Телефон'] || row['phone'] || null;
+                const homeAddress = row['Домашний адрес'] || row['Адрес'] || row['home_address'] || null;
+
+                // Семейные данные (для таблицы student_profiles)
+                let familyType = String(row['Тип семьи'] || row['family_type'] || '').trim();
+                let livesWith = String(row['С кем проживает'] || row['lives_with'] || '').trim();
+
+                // Конвертируем русские названия типов семьи в enum значения
+                const familyTypeMap = {
+                    'полная': 'full',
+                    'неполная': 'single_parent',
+                    'опека': 'guardian',
+                    'другое': 'other'
+                };
+                
+                // Приводим к нижнему регистру и ищем в маппинге
+                if (familyType && familyTypeMap[familyType.toLowerCase()]) {
+                    familyType = familyTypeMap[familyType.toLowerCase()];
+                } else if (familyType && !['full', 'single_parent', 'guardian', 'other'].includes(familyType)) {
+                    // Если неизвестное значение - сохраняем как есть или other
+                    familyType = 'other';
+                }
+
+                // ====== ВСТАВКА В БАЗУ ДАННЫХ ======
+                
+                // 1. Создаём пользователя в таблице users
+                const [userResult] = await db.query(
+                    `INSERT INTO users 
+                    (username, password, full_name, role, birth_date, group_name, email, phone, is_active, created_at, updated_at) 
+                    VALUES (?, ?, ?, 'student', ?, ?, ?, ?, 1, NOW(), NOW())`,
+                    [username, hashedPassword, fullName, birthDate, groupName, email, phone]
+                );
+
+                const userId = userResult.insertId;
+
+                // 2. Создаём профиль студента (если есть дополнительные данные)
+                if (school || homeAddress || familyType || livesWith) {
+                    await db.query(
+                        `INSERT INTO student_profiles 
+                        (user_id, family_type, lives_with, school, home_address, created_at, updated_at) 
+                        VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+                        ON DUPLICATE KEY UPDATE 
+                        family_type = VALUES(family_type),
+                        lives_with = VALUES(lives_with),
+                        school = VALUES(school),
+                        home_address = VALUES(home_address),
+                        updated_at = NOW()`,
+                        [userId, familyType || null, livesWith || null, school, homeAddress]
+                    );
+                }
+
+                // Добавляем в список успешных
+                results.success++;
+                results.imported.push({
+                    id: userId,
+                    username: username,
+                    full_name: fullName,
+                    password: password, // Возвращаем пароль чтобы показать админу
+                    group_name: groupName,
+                    school: school,
+                    email: email
+                });
+
+                console.log(`  ✅ Строка ${rowNum}: ${fullName} (@${username}) - импортирован`);
+
+            } catch (err) {
+                console.error(`  ❌ Ошибка в строке ${rowNum}:`, err.message);
+                results.errors.push({
+                    row: rowNum,
+                    error: err.message
+                });
+                results.skipped++;
+            }
+        }
+
+        // Лог итогов
+        console.log('\n📊 ===== ИТОГИ ИМПОРТА =====');
+        console.log(`   Всего строк:     ${results.total}`);
+        console.log(`   ✅ Успешно:      ${results.success}`);
+        console.log(`   ❌ Пропущено:    ${results.skipped}`);
+        console.log(`   ⚠️  Ошибок:       ${results.errors.length}`);
+        console.log('=============================\n');
+
+        // Отправляем ответ клиенту
+        res.json({
+            success: true,
+            message: `Импорт завершён! ✅ Успешно: ${results.success}, ❌ Пропущено: ${results.skipped}`,
+            ...results
+        });
+
+    } catch (error) {
+        console.error('❌ [IMPORT] КРИТИЧЕСКАЯ ОШИБКА:', error);
+        res.status(500).json({ 
+            error: 'Ошибка при обработке Excel файла: ' + error.message 
+        });
+    }
+});
+
+console.log('✅ [INIT] Роут импорта Excel подключён: POST /api/students/import');
+console.log('   Колонки: Логин, Пароль, ФИО, Дата рождения, Группа, Школа окончания, Email, Телефон, Домашний адрес, Тип семьи, С кем проживает');
+
+// ==================== КОНЕЦ ИМПОРТА EXCEL ====================
 // Запуск сервера
 app.listen(PORT, () => {
     console.log(`
