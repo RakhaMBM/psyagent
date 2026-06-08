@@ -848,7 +848,7 @@ app.get('/api/consents', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const [consents] = await pool.execute(`
             SELECT pc.*, u.full_name as student_name, u.birth_date, u.group_name,
-                   admin.full_name as created_by_name
+            admin.full_name as created_by_name
             FROM parental_consents pc
             JOIN users u ON pc.user_id = u.id
             JOIN users admin ON pc.created_by = admin.id
