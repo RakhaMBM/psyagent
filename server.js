@@ -985,6 +985,7 @@ app.get('/consent', (req, res) => {
 });
 
 
+
 // ==================== ИМПОРТ СТУДЕНТОВ ИЗ EXCEL ====================
 
 // Настройка загрузки файлов Excel
@@ -1003,9 +1004,6 @@ const uploadExcel = multer({
 /**
  * POST /api/students/import
  * Импорт студентов из Excel файла
- * 
- * Формат колонок:
- * Логин | Пароль | ФИО | Дата рождения | Группа | Школа окончания | Email | Телефон | Домашний адрес | Тип семьи | С кем проживает
  */
 app.post('/api/students/import', uploadExcel.single('file'), async (req, res) => {
     try {
@@ -1015,42 +1013,122 @@ app.post('/api/students/import', uploadExcel.single('file'), async (req, res) =>
 
         console.log(`\n📂 [IMPORT] Загружен файл: ${req.file.originalname} (${(req.file.size/1024).toFixed(1)} KB)`);
 
-        // Читаем Excel
-        const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+        // 📖 Читаем Excel с поддержкой КИРИЛЛИЦЫ
+        const workbook = XLSX.read(req.file.buffer, { 
+            type: 'buffer',
+            cellText: false,
+            cellDates: true,
+            // ✅ Ключевые опции для кириллицы:
+            codepage: 65001,           // UTF-8
+            type: 'array',
+            raw: false,
+            defval: ''                // Пустая строка вместо undefined
+        });
+        
         const sheetName = workbook.SheetNames[0];
-        const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+        const worksheet = workbook.Sheets[sheetName];
+        
+        // Конвертируем в JSON с опциями для кириллицы
+        const rawData = XLSX.utils.sheet_to_json(worksheet, {
+            header: 1,          // Считываем как массив (для отладки)
+            raw: false,
+            dateNF: 'yyyy-mm-dd' // Формат дат
+        });
 
-        console.log(`📊 [IMPORT] Найдено строк: ${rawData.length}`);
+        console.log(`📊 [IMPORT] Всего строк (с заголовком): ${rawData.length}`);
 
-        if (rawData.length === 0) {
-            return res.status(400).json({ error: 'Excel файл пустой' });
+        if (!rawData || rawData.length < 2) {
+            return res.status(400).json({ error: 'Excel файл пустой или только заголовок' });
         }
 
+        // Заголовки из первой строки
+        const headers = rawData[0].map(h => String(h || '').trim());
+        console.log(`📌 [IMPORT] Найдены колонки:`, headers);
+
+        // Преобразуем данные в объекты с правильными ключами
+        const dataRows = rawData.slice(1); // Без заголовка
+        const students = [];
+
+        for (let i = 0; i < dataRows.length; i++) {
+            const row = dataRows[i];
+            const rowObj = {};
+            
+            headers.forEach((header, idx) => {
+                let value = row[idx];
+                
+                // Конвертируем в строку и чистим
+                if (value !== null && value !== undefined) {
+                    // Если дата - форматируем
+                    if (value instanceof Date) {
+                        value = value.toISOString().split('T')[0]; // YYYY-MM-DD
+                    } else {
+                        value = String(value).trim();
+                    }
+                } else {
+                    value = '';
+                }
+                
+                rowObj[header] = value;
+            });
+            
+            students.push(rowObj);
+        }
+
+        console.log(`📊 [IMPORT] Студентов для обработки: ${students.length}`);
+
+        if (students.length === 0) {
+            return res.status(400).json({ error: 'Нет данных для импорта (пустые строки)' });
+        }
+
+        // Результаты импорта
         const results = {
-            total: rawData.length,
+            total: students.length,
             success: 0,
             errors: [],
             skipped: 0,
             imported: []
         };
 
-        // Обрабатываем каждую строку
-        for (let i = 0; i < rawData.length; i++) {
-            const row = rawData[i];
+        // Обрабатываем каждого студента
+        for (let i = 0; i < students.length; i++) {
+            const row = students[i];
             const rowNum = i + 2; // +2 т.к. строка 1 - заголовок
 
             try {
-                // ====== Извлекаем данные по РУССКИМ названиям колонок ======
+                // ====== Извлекаем данные с ПОДДЕРЖКОЙ РАЗНЫХ ЯЗЫКОВ КОЛОНОК ======
                 
-                // ОБЯЗАТЕЛЬНЫЕ ПОЛЯ
-                const username = String(row['Логин'] || row['username'] || '').trim();
-                const fullName = String(row['ФИО'] || row['full_name'] || '').trim();
+                // Логин (обязательный) — ищем во всех вариантах написания
+                const username = (
+                    row['Логин'] || 
+                    row['логин'] || 
+                    row['LOGIN'] || 
+                    row['login'] || 
+                    row['Username'] || 
+                    row['username'] ||
+                    row['Login'] ||
+                    ''
+                ).toString().trim();
+
+                // ФИО (обязательное)
+                const fullName = (
+                    row['ФИО'] || 
+                    row['фио'] || 
+                    row['FIO'] || 
+                    row['ФИО полностью'] || 
+                    row['Full Name'] || 
+                    row['full_name'] || 
+                    row['FullName'] ||
+                    row['Ф.И.О.'] ||
+                    ''
+                ).toString().trim();
+
+                console.log(`  [${rowNum}] Обработка: username="${username}", FIO="${fullName}"`);
 
                 // Валидация обязательных полей
-                if (!username || !fullName) {
+                if (!username || !fullName || username === '' || fullName === '') {
                     results.errors.push({
                         row: rowNum,
-                        error: `Отсутствуют обязательные поля: "Логин" и/или "ФИО"`
+                        error: `Отсутствуют обязательные поля: "Логин"="${username}", "ФИО"="${fullName}"`
                     });
                     results.skipped++;
                     continue;
@@ -1065,17 +1143,23 @@ app.post('/api/students/import', uploadExcel.single('file'), async (req, res) =>
                 if (existing && existing.length > 0) {
                     results.errors.push({
                         row: rowNum,
-                        error: `Студент с логином "${username}" уже существует`
+                        error: `Студент с логином "${username}" уже существует (ID=${existing[0].id})`
                     });
                     results.skipped++;
                     continue;
                 }
 
-                // ОПЦИОНАЛЬНЫЕ ПОЛЯ
-                let password = String(row['Пароль'] || row['password'] || '').trim();
+                // Пароль (опциональный)
+                let password = (
+                    row['Пароль'] || 
+                    row['пароль'] || 
+                    row['Password'] || 
+                    row['password'] ||
+                    ''
+                ).toString().trim();
                 
                 // Генерируем пароль если не указан
-                if (!password) {
+                if (!password || password === '') {
                     const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
                     password = '';
                     for (let p = 0; p < 8; p++) {
@@ -1086,37 +1170,99 @@ app.post('/api/students/import', uploadExcel.single('file'), async (req, res) =>
                 // Хешируем пароль
                 const hashedPassword = await bcrypt.hash(password, 10);
 
-                // Основные данные студента
-                const birthDate = row['Дата рождения'] || row['Дата_рождения'] || row['birth_date'] || null;
-                const groupName = row['Группа'] || row['group_name'] || null;
-                const school = row['Школа окончания'] || row['Школа'] || row['school'] || null;
-                const email = row['Email'] || row['email'] || null;
-                const phone = row['Телефон'] || row['phone'] || null;
-                const homeAddress = row['Домашний адрес'] || row['Адрес'] || row['home_address'] || null;
-
-                // Семейные данные (для таблицы student_profiles)
-                let familyType = String(row['Тип семьи'] || row['family_type'] || '').trim();
-                let livesWith = String(row['С кем проживает'] || row['lives_with'] || '').trim();
-
-                // Конвертируем русские названия типов семьи в enum значения
-                const familyTypeMap = {
-                    'полная': 'full',
-                    'неполная': 'single_parent',
-                    'опека': 'guardian',
-                    'другое': 'other'
-                };
+                // ====== ОПЦИОНАЛЬНЫЕ ПОЛЯ (с поддержкой разных языков) ======
                 
-                // Приводим к нижнему регистру и ищем в маппинге
-                if (familyType && familyTypeMap[familyType.toLowerCase()]) {
-                    familyType = familyTypeMap[familyType.toLowerCase()];
-                } else if (familyType && !['full', 'single_parent', 'guardian', 'other'].includes(familyType)) {
-                    // Если неизвестное значение - сохраняем как есть или other
-                    familyType = 'other';
+                const birthDate = (
+                    row['Дата рождения'] || 
+                    row['Дата_рождения'] || 
+                    row['дата рождения'] ||
+                    row['birth_date'] || 
+                    row['Birth Date'] ||
+                    row['BirthDate'] ||
+                    ''
+                ).toString().trim() || null;
+
+                const groupName = (
+                    row['Группа'] || 
+                    row['группа'] || 
+                    row['Group'] || 
+                    row['group_name'] ||
+                    row['GroupName'] ||
+                    ''
+                ).toString().trim() || null;
+
+                const school = (
+                    row['Школа окончания'] || 
+                    row['Школа'] || 
+                    row['школа'] ||
+                    row['School'] || 
+                    row['school'] ||
+                    ''
+                ).toString().trim() || null;
+
+                const email = (
+                    row['Email'] || 
+                    row['email'] || 
+                    row['E-mail'] ||
+                    row['EMAIL'] ||
+                    ''
+                ).toString().trim() || null;
+
+                const phone = (
+                    row['Телефон'] || 
+                    row['телефон'] || 
+                    row['Phone'] || 
+                    row['phone'] ||
+                    row['Tel'] ||
+                    ''
+                ).toString().trim() || null;
+
+                const homeAddress = (
+                    row['Домашний адрес'] || 
+                    row['Адрес'] || 
+                    row['адрес'] ||
+                    row['home_address'] || 
+                    row['Address'] ||
+                    ''
+                ).toString().trim() || null;
+
+                // Семейные данные
+                let familyTypeRaw = (
+                    row['Тип семьи'] || 
+                    row['тип семьи'] || 
+                    row['Family Type'] || 
+                    row['family_type'] ||
+                    ''
+                ).toString().trim().toLowerCase();
+
+                const livesWith = (
+                    row['С кем проживает'] || 
+                    row['Проживает с'] || 
+                    row['lives_with'] || 
+                    row['Lives With'] ||
+                    ''
+                ).toString().trim() || null;
+
+                // Конвертируем русские названия типов семьи в enum значения БД
+                let familyType = 'full'; // По умолчанию
+                if (familyTypeRaw) {
+                    const familyMap = {
+                        'полная': 'full',
+                        'полная семья': 'full',
+                        'неполная': 'single_parent',
+                        'неполная семья': 'single_parent',
+                        'опека': 'guardian',
+                        'под опекой': 'guardian',
+                        'другое': 'other',
+                        'иное': 'other'
+                    };
+                    
+                    familyType = familyMap[familyTypeRaw] || familyTypeRaw;
                 }
 
                 // ====== ВСТАВКА В БАЗУ ДАННЫХ ======
                 
-                // 1. Создаём пользователя в таблице users
+                // 1. Создаём пользователя
                 const [userResult] = await db.query(
                     `INSERT INTO users 
                     (username, password, full_name, role, birth_date, group_name, email, phone, is_active, created_at, updated_at) 
@@ -1126,7 +1272,7 @@ app.post('/api/students/import', uploadExcel.single('file'), async (req, res) =>
 
                 const userId = userResult.insertId;
 
-                // 2. Создаём профиль студента (если есть дополнительные данные)
+                // 2. Создаём профиль студента
                 if (school || homeAddress || familyType || livesWith) {
                     await db.query(
                         `INSERT INTO student_profiles 
@@ -1138,23 +1284,23 @@ app.post('/api/students/import', uploadExcel.single('file'), async (req, res) =>
                         school = VALUES(school),
                         home_address = VALUES(home_address),
                         updated_at = NOW()`,
-                        [userId, familyType || null, livesWith || null, school, homeAddress]
+                        [userId, familyType, livesWith, school, homeAddress]
                     );
                 }
 
-                // Добавляем в список успешных
+                // Успех!
                 results.success++;
                 results.imported.push({
                     id: userId,
                     username: username,
                     full_name: fullName,
-                    password: password, // Возвращаем пароль чтобы показать админу
+                    password: password,
                     group_name: groupName,
                     school: school,
                     email: email
                 });
 
-                console.log(`  ✅ Строка ${rowNum}: ${fullName} (@${username}) - импортирован`);
+                console.log(`  ✅ Строка ${rowNum}: "${fullName}" (@${username}) - OK`);
 
             } catch (err) {
                 console.error(`  ❌ Ошибка в строке ${rowNum}:`, err.message);
@@ -1174,7 +1320,7 @@ app.post('/api/students/import', uploadExcel.single('file'), async (req, res) =>
         console.log(`   ⚠️  Ошибок:       ${results.errors.length}`);
         console.log('=============================\n');
 
-        // Отправляем ответ клиенту
+        // Ответ клиенту
         res.json({
             success: true,
             message: `Импорт завершён! ✅ Успешно: ${results.success}, ❌ Пропущено: ${results.skipped}`,
@@ -1184,13 +1330,14 @@ app.post('/api/students/import', uploadExcel.single('file'), async (req, res) =>
     } catch (error) {
         console.error('❌ [IMPORT] КРИТИЧЕСКАЯ ОШИБКА:', error);
         res.status(500).json({ 
-            error: 'Ошибка при обработке Excel файла: ' + error.message 
+            error: 'Ошибка при обработке Excel файла: ' + error.message,
+            details: error.stack
         });
     }
 });
 
 console.log('✅ [INIT] Роут импорта Excel подключён: POST /api/students/import');
-console.log('   Колонки: Логин, Пароль, ФИО, Дата рождения, Группа, Школа окончания, Email, Телефон, Домашний адрес, Тип семьи, С кем проживает');
+console.log('   Поддержка кириллицы: ✅');
 
 // ==================== КОНЕЦ ИМПОРТА EXCEL ====================
 // Запуск сервера
