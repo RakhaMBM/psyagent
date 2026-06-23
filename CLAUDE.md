@@ -1,0 +1,54 @@
+# Psyagent — система психологической диагностики студентов
+
+Веб-приложение для педагога-психолога колледжа: учёт студентов, опросники/тесты,
+прохождение диагностики, согласия родителей несовершеннолетних, статистика и экспорт.
+
+## Стек
+- **Backend:** Node.js + Express (`server.js`, единый файл).
+- **БД:** MySQL 8 через `mysql2/promise` (пул соединений).
+- **Auth:** JWT (`jsonwebtoken`) + `bcryptjs` для паролей.
+- **Загрузка файлов:** `multer` → `public/uploads/` (сканы согласий).
+- **Frontend:** статические HTML на Bootstrap 5 в `public/` (без сборки).
+
+## Структура
+- `server.js` — весь REST API и отдача страниц.
+- `schema.sql` — создание БД `psych_diagnostic`, таблиц, индексов, пользователя БД и админа.
+- `public/index.html` — вход. `admin.html` — кабинет психолога. `student.html` — кабинет студента.
+- `public/styles.css` — общие стили (на него ссылаются все три страницы — имя именно `styles.css`).
+
+## Запуск
+```bash
+# 1. Установить зависимости
+npm install
+# 2. Создать БД и пользователя (от имени root в MySQL):
+#    mysql -u root -p < schema.sql
+# 3. Запустить сервер
+npm start            # node server.js, порт 3000
+```
+Открыть http://localhost:3000
+
+## Доступы
+- **Админ:** логин `admin`, пароль `password` (хэш в `schema.sql`).
+- **Пользователь БД:** `psyagent_user` / `Ewe123123!`, база `psych_diagnostic`
+  (значения по умолчанию в `server.js`; переопределяются env-переменными
+  `DB_HOST/DB_USER/DB_PASSWORD/DB_NAME`, `PORT`, `JWT_SECRET`).
+
+## Модель данных (ключевое)
+- `users` — пользователи (роль `admin`/`student`), без course/specialty.
+- `student_profiles` — семья и быт студента: `family_type`, `lives_with`,
+  `school`, `home_address`, `psychologist_notes`. Связь 1:1 с `users`.
+- `questionnaires` + `questions` — опросники и вопросы (типы: single/multiple/scale/text).
+- `results` — прохождения (JSON-ответы + score). `assignments` — назначения тестов.
+- `parental_consents` — согласия родителей несовершеннолетних. `audit_log` — аудит.
+
+## Особенности / на что смотреть
+- Несовершеннолетние (<18) не допускаются к тестам без подтверждённого согласия
+  родителя — middleware `checkAgeConsent`.
+- Колонки БД приходят в snake_case (`scale_labels`, `scale_min`), а фронтенд местами
+  ждёт camelCase (`scaleLabels`) — сервер при выдаче опросника конвертирует это явно.
+- JSON-колонки (`answers`, `options`, `target_groups`) mysql2 парсит автоматически;
+  в коде стоят защитные проверки `typeof x === 'string'` перед `JSON.parse`.
+- Любые `.map()/.forEach()` по ответам API на фронте обёрнуты в `Array.isArray`.
+
+## Язык
+Проект и общение с пользователем — на русском.
