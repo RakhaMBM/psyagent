@@ -396,6 +396,76 @@ app.delete('/api/students/:id', authenticateToken, requireAdmin, async (req, res
     }
 });
 
+// Массовый импорт студентов (данные парсятся из Excel на клиенте и приходят массивом)
+app.post('/api/students/import', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { students } = req.body;
+        if (!Array.isArray(students) || students.length === 0) {
+            return res.status(400).json({ error: 'Нет данных для импорта' });
+        }
+
+        const DEFAULT_PASSWORD = 'Collegeit2026!';
+        const VALID_FAMILY = ['full', 'single_parent', 'guardian', 'other'];
+        let created = 0;
+        const errors = [];
+
+        for (let i = 0; i < students.length; i++) {
+            const s = students[i] || {};
+            const rowNum = i + 2; // строка в Excel (с учётом заголовка)
+            const username = String(s.username || '').trim();
+
+            if (!username) {
+                errors.push(`Строка ${rowNum}: не указан логин`);
+                continue;
+            }
+
+            const fullName = String(s.full_name || '').trim() || username;
+            const password = String(s.password || '').trim() || DEFAULT_PASSWORD;
+            let familyType = String(s.family_type || 'full').trim();
+            if (!VALID_FAMILY.includes(familyType)) familyType = 'full';
+            const birthDate = s.birth_date ? String(s.birth_date).slice(0, 10) : null;
+
+            const conn = await pool.getConnection();
+            try {
+                await conn.beginTransaction();
+                const hashedPassword = await bcrypt.hash(password, 10);
+
+                const [result] = await conn.execute(
+                    `INSERT INTO users (username, password, full_name, role, birth_date, group_name, email, phone)
+                     VALUES (?, ?, ?, 'student', ?, ?, ?, ?)`,
+                    [username, hashedPassword, fullName, birthDate,
+                     s.group_name || null, s.email || null, s.phone || null]
+                );
+                const userId = result.insertId;
+
+                await conn.execute(
+                    `INSERT INTO student_profiles (user_id, family_type, lives_with, school, home_address)
+                     VALUES (?, ?, ?, ?, ?)`,
+                    [userId, familyType, s.lives_with || '', s.school || null, s.home_address || null]
+                );
+
+                await conn.commit();
+                created++;
+            } catch (e) {
+                await conn.rollback();
+                if (e.code === 'ER_DUP_ENTRY') {
+                    errors.push(`Строка ${rowNum}: логин «${username}» уже существует`);
+                } else {
+                    errors.push(`Строка ${rowNum}: ошибка (${e.code || e.message})`);
+                }
+            } finally {
+                conn.release();
+            }
+        }
+
+        await logAction(req.user.id, 'IMPORT_STUDENTS', 'user', null, { created, errors: errors.length });
+        res.json({ created, total: students.length, errors });
+    } catch (error) {
+        console.error('Ошибка импорта студентов:', error);
+        res.status(500).json({ error: 'Ошибка импорта' });
+    }
+});
+
 // ============================================
 // API РОУТЫ - ПРОФИЛЬ СТУДЕНТА
 // ============================================

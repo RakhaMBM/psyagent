@@ -13,7 +13,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top shadow">
         <div class="container-fluid">
             <a class="navbar-brand fw-bold" href="#">
-                <i class="bi bi-clipboard-data me-2"></i>Диагностика
+                <i class="bi bi-clipboard-data me-2"></i><span data-i18n="nav.brand">Диагностика</span>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -22,41 +22,46 @@
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
                         <a class="nav-link active" href="#" onclick="showSection('dashboard')">
-                            <i class="bi bi-speedometer2 me-1"></i>Главная
+                            <i class="bi bi-speedometer2 me-1"></i><span data-i18n="nav.dashboard">Главная</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#" onclick="showSection('students')">
-                            <i class="bi bi-people me-1"></i>Студенты
+                            <i class="bi bi-people me-1"></i><span data-i18n="nav.students">Студенты</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#" onclick="showSection('tests')">
-                            <i class="bi bi-journal-text me-1"></i>Тесты
+                            <i class="bi bi-journal-text me-1"></i><span data-i18n="nav.tests">Тесты</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#" onclick="showSection('results')">
-                            <i class="bi bi-graph-up me-1"></i>Результаты
+                            <i class="bi bi-graph-up me-1"></i><span data-i18n="nav.results">Результаты</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#" onclick="showSection('consents')">
-                            <i class="bi bi-file-earmark-check me-1"></i>Согласия
+                            <i class="bi bi-file-earmark-check me-1"></i><span data-i18n="nav.consents">Согласия</span>
                         </a>
                     </li>
                 </ul>
-                <div class="dropdown">
-                    <button class="btn btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                        <i class="bi bi-person-circle me-1"></i><span id="adminName">Админ</span>
+                <div class="d-flex align-items-center gap-2">
+                    <button class="btn btn-light btn-sm" type="button" onclick="toggleLang()" title="Тіл / Язык">
+                        <i class="bi bi-translate me-1"></i><span id="langLabel">KZ</span>
                     </button>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        <li><span class="dropdown-item-text text-muted small">Педагог-психолог</span></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item text-danger" href="#" onclick="logout()">
-                            <i class="bi bi-box-arrow-right me-1"></i>Выход
-                        </a></li>
-                    </ul>
+                    <div class="dropdown">
+                        <button class="btn btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-person-circle me-1"></i><span id="adminName">Админ</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><span class="dropdown-item-text text-muted small" data-i18n="role.psychologist">Педагог-психолог</span></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger" href="#" onclick="logout()">
+                                <i class="bi bi-box-arrow-right me-1"></i><span data-i18n="common.logout">Выход</span>
+                            </a></li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>
@@ -66,15 +71,15 @@
     <main class="content-wrapper pt-5 mt-5">
         <!-- Секция: Дашборд -->
         <section id="section-dashboard" class="section-active p-4">
-            <h4 class="mb-4"><i class="bi bi-speedometer2 me-2"></i>Обзор системы</h4>
-            
+            <h4 class="mb-4"><i class="bi bi-speedometer2 me-2"></i><span data-i18n="dash.overview">Обзор системы</span></h4>
+
             <div class="row g-4 mb-4">
                 <div class="col-md-3">
                     <div class="stat-card stat-card-primary">
                         <div class="stat-icon"><i class="bi bi-people-fill"></i></div>
                         <div class="stat-info">
                             <h3 id="totalStudents">0</h3>
-                            <p>Студентов всего</p>
+                            <p data-i18n="dash.total_students">Студентов всего</p>
                         </div>
                     </div>
                 </div>
@@ -83,7 +88,7 @@
                         <div class="stat-icon"><i class="bi bi-journal-check"></i></div>
                         <div class="stat-info">
                             <h3 id="completedTests">0</h3>
-                            <p>Тестов пройдено</p>
+                            <p data-i18n="dash.completed_tests">Тестов пройдено</p>
                         </div>
                     </div>
                 </div>
@@ -92,7 +97,7 @@
                         <div class="stat-icon"><i class="bi bi-hourglass-split"></i></div>
                         <div class="stat-info">
                             <h3 id="pendingTests">0</h3>
-                            <p>В ожидании</p>
+                            <p data-i18n="dash.pending">В ожидании</p>
                         </div>
                     </div>
                 </div>
@@ -101,51 +106,59 @@
                         <div class="stat-icon"><i class="bi bi-shield-exclamation"></i></div>
                         <div class="stat-info">
                             <h3 id="pendingConsents">0</h3>
-                            <p>Нет согласия</p>
+                            <p data-i18n="dash.no_consent">Нет согласия</p>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Быстрые действия -->
-            <div class="row g-4">
-                <div class="col-md-6">
+            <!-- Графики -->
+            <div class="row g-4 mb-4">
+                <div class="col-lg-8">
                     <div class="card h-100">
                         <div class="card-header bg-white">
-                            <h6 class="mb-0"><i class="bi bi-lightning me-2"></i>Быстрые действия</h6>
+                            <h6 class="mb-0"><i class="bi bi-bar-chart-line me-2"></i><span data-i18n="dash.chart_groups">Прохождение тестов по группам</span></h6>
                         </div>
                         <div class="card-body">
-                            <div class="d-grid gap-2">
-                                <button class="btn btn-outline-primary text-start" onclick="showSection('students'); openStudentModal()">
-                                    <i class="bi bi-person-plus me-2"></i>Добавить студента
-                                </button>
-                                <button class="btn btn-outline-success text-start" onclick="showSection('tests'); openTestModal()">
-                                    <i class="bi bi-plus-circle me-2"></i>Создать тест
-                                </button>
-                                <button class="btn btn-outline-info text-start" onclick="exportResults()">
-                                    <i class="bi bi-download me-2"></i>Экспорт результатов
-                                </button>
+                            <div style="position:relative;height:300px;">
+                                <canvas id="groupsChart"></canvas>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-6">
+                <div class="col-lg-4">
                     <div class="card h-100">
                         <div class="card-header bg-white">
-                            <h6 class="mb-0"><i class="bi bi-bar-chart me-2"></i>По группам</h6>
+                            <h6 class="mb-0"><i class="bi bi-pie-chart me-2"></i><span data-i18n="dash.chart_consent">Статус согласий</span></h6>
+                        </div>
+                        <div class="card-body">
+                            <div style="position:relative;height:300px;">
+                                <canvas id="consentChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Таблица по группам -->
+            <div class="row g-4">
+                <div class="col-12">
+                    <div class="card h-100">
+                        <div class="card-header bg-white">
+                            <h6 class="mb-0"><i class="bi bi-table me-2"></i><span data-i18n="dash.by_groups">По группам</span></h6>
                         </div>
                         <div class="card-body">
                             <div id="groupsStats" class="table-responsive">
                                 <table class="table table-sm table-hover">
                                     <thead class="table-light">
                                         <tr>
-                                            <th>Группа</th>
-                                            <th>Студентов</th>
-                                            <th>Прошли</th>
+                                            <th data-i18n="table.group">Группа</th>
+                                            <th data-i18n="table.students">Студентов</th>
+                                            <th data-i18n="table.passed">Прошли</th>
                                         </tr>
                                     </thead>
                                     <tbody id="groupsTableBody">
-                                        <tr><td colspan="3" class="text-center text-muted">Загрузка...</td></tr>
+                                        <tr><td colspan="3" class="text-center text-muted" data-i18n="common.loading">Загрузка...</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -157,11 +170,20 @@
 
         <!-- Секция: Студенты -->
         <section id="section-students" class="p-4 d-none">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h4><i class="bi bi-people me-2"></i>Управление студентами</h4>
-                <button class="btn btn-primary" onclick="openStudentModal()">
-                    <i class="bi bi-plus-lg me-1"></i>Добавить студента
-                </button>
+            <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+                <h4><i class="bi bi-people me-2"></i><span data-i18n="students.title">Управление студентами</span></h4>
+                <div class="d-flex gap-2 flex-wrap">
+                    <input type="file" id="importFile" accept=".xlsx,.xls,.csv" class="d-none" onchange="importStudents(event)">
+                    <button class="btn btn-outline-secondary" onclick="downloadTemplate()">
+                        <i class="bi bi-file-earmark-arrow-down me-1"></i><span data-i18n="students.template">Шаблон</span>
+                    </button>
+                    <button class="btn btn-success" onclick="document.getElementById('importFile').click()">
+                        <i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="students.import">Импорт Excel</span>
+                    </button>
+                    <button class="btn btn-primary" onclick="openStudentModal()">
+                        <i class="bi bi-plus-lg me-1"></i><span data-i18n="common.add_student">Добавить студента</span>
+                    </button>
+                </div>
             </div>
 
             <!-- Фильтры -->
@@ -169,16 +191,16 @@
                 <div class="card-body">
                     <div class="row g-3">
                         <div class="col-md-4">
-                            <input type="text" class="form-control" id="searchStudent" placeholder="Поиск по ФИО...">
+                            <input type="text" class="form-control" id="searchStudent" data-i18n-ph="common.search_fio" placeholder="Поиск по ФИО...">
                         </div>
                         <div class="col-md-3">
                             <select class="form-select" id="filterGroup">
-                                <option value="">Все группы</option>
+                                <option value="" data-i18n="common.all_groups">Все группы</option>
                             </select>
                         </div>
                         <div class="col-md-3">
                             <button class="btn btn-outline-secondary w-100" onclick="loadStudents()">
-                                <i class="bi bi-search me-1"></i>Применить
+                                <i class="bi bi-search me-1"></i><span data-i18n="common.apply">Применить</span>
                             </button>
                         </div>
                     </div>
@@ -192,17 +214,17 @@
                         <table class="table table-hover mb-0">
                             <thead class="table-dark">
                                 <tr>
-                                    <th>ФИО</th>
-                                    <th>Дата рождения</th>
-                                    <th>Возраст</th>
-                                    <th>Группа</th>
-                                    <th>Школа</th>
-                                    <th>Согласие</th>
-                                    <th>Действия</th>
+                                    <th data-i18n="table.fio">ФИО</th>
+                                    <th data-i18n="table.birth_date">Дата рождения</th>
+                                    <th data-i18n="table.age">Возраст</th>
+                                    <th data-i18n="table.group">Группа</th>
+                                    <th data-i18n="table.school">Школа</th>
+                                    <th data-i18n="table.consent">Согласие</th>
+                                    <th data-i18n="common.actions">Действия</th>
                                 </tr>
                             </thead>
                             <tbody id="studentsTableBody">
-                                <tr><td colspan="7" class="text-center py-4">Загрузка...</td></tr>
+                                <tr><td colspan="7" class="text-center py-4" data-i18n="common.loading">Загрузка...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -213,9 +235,9 @@
         <!-- Секция: Тесты -->
         <section id="section-tests" class="p-4 d-none">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h4><i class="bi bi-journal-text me-2"></i>Психологические методики</h4>
+                <h4><i class="bi bi-journal-text me-2"></i><span data-i18n="tests.title">Психологические методики</span></h4>
                 <button class="btn btn-primary" onclick="openTestModal()">
-                    <i class="bi bi-plus-lg me-1"></i>Создать тест
+                    <i class="bi bi-plus-lg me-1"></i><span data-i18n="tests.create">Создать тест</span>
                 </button>
             </div>
 
@@ -226,10 +248,10 @@
         <!-- Секция: Результаты -->
         <section id="section-results" class="p-4 d-none">
             <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-                <h4><i class="bi bi-graph-up me-2"></i>Результаты диагностики</h4>
+                <h4><i class="bi bi-graph-up me-2"></i><span data-i18n="results.title">Результаты диагностики</span></h4>
                 <div class="d-flex gap-2">
                     <button class="btn btn-outline-success" onclick="exportResults()">
-                        <i class="bi bi-download me-1"></i>Скачать JSON
+                        <i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="results.export">Скачать Excel</span>
                     </button>
                 </div>
             </div>
@@ -240,12 +262,12 @@
                     <div class="row g-3">
                         <div class="col-md-3">
                             <select class="form-select" id="resultGroup">
-                                <option value="">Все группы</option>
+                                <option value="" data-i18n="common.all_groups">Все группы</option>
                             </select>
                         </div>
                         <div class="col-md-3">
                             <select class="form-select" id="resultTest">
-                                <option value="">Все тесты</option>
+                                <option value="" data-i18n="common.all_tests">Все тесты</option>
                             </select>
                         </div>
                         <div class="col-md-2">
@@ -255,7 +277,7 @@
                             <input type="date" class="form-control" id="dateTo">
                         </div>
                         <div class="col-md-2">
-                            <button class="btn btn-outline-secondary w-100" onclick="loadResults()">Применить</button>
+                            <button class="btn btn-outline-secondary w-100" onclick="loadResults()" data-i18n="common.apply">Применить</button>
                         </div>
                     </div>
                 </div>
@@ -268,16 +290,16 @@
                         <table class="table table-hover mb-0">
                             <thead class="table-dark">
                                 <tr>
-                                    <th>Студент</th>
-                                    <th>Группа</th>
-                                    <th>Тест</th>
-                                    <th>Балл</th>
-                                    <th>Дата</th>
-                                    <th>Действия</th>
+                                    <th data-i18n="table.student">Студент</th>
+                                    <th data-i18n="table.group">Группа</th>
+                                    <th data-i18n="table.test">Тест</th>
+                                    <th data-i18n="table.score">Балл</th>
+                                    <th data-i18n="table.date">Дата</th>
+                                    <th data-i18n="common.actions">Действия</th>
                                 </tr>
                             </thead>
                             <tbody id="resultsTableBody">
-                                <tr><td colspan="6" class="text-center py-4">Выберите фильтры и нажмите применить</td></tr>
+                                <tr><td colspan="6" class="text-center py-4" data-i18n="results.hint">Выберите фильтры и нажмите применить</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -288,9 +310,9 @@
         <!-- Секция: Согласия -->
         <section id="section-consents" class="p-4 d-none">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h4><i class="bi bi-file-earmark-check me-2"></i>Согласия родителей</h4>
+                <h4><i class="bi bi-file-earmark-check me-2"></i><span data-i18n="consents.title">Согласия родителей</span></h4>
                 <button class="btn btn-primary" onclick="openConsentModal()">
-                    <i class="bi bi-plus-lg me-1"></i>Добавить согласие
+                    <i class="bi bi-plus-lg me-1"></i><span data-i18n="consents.add">Добавить согласие</span>
                 </button>
             </div>
 
@@ -300,17 +322,17 @@
                         <table class="table table-hover mb-0">
                             <thead class="table-dark">
                                 <tr>
-                                    <th>Студент</th>
-                                    <th>Возраст</th>
-                                    <th>Родитель</th>
-                                    <th>Степень родства</th>
-                                    <th>Статус</th>
-                                    <th>Дата</th>
-                                    <th>Действия</th>
+                                    <th data-i18n="table.student">Студент</th>
+                                    <th data-i18n="table.age">Возраст</th>
+                                    <th data-i18n="table.parent">Родитель</th>
+                                    <th data-i18n="table.relation">Степень родства</th>
+                                    <th data-i18n="table.status">Статус</th>
+                                    <th data-i18n="table.date">Дата</th>
+                                    <th data-i18n="common.actions">Действия</th>
                                 </tr>
                             </thead>
                             <tbody id="consentsTableBody">
-                                <tr><td colspan="7" class="text-center py-4">Загрузка...</td></tr>
+                                <tr><td colspan="7" class="text-center py-4" data-i18n="common.loading">Загрузка...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -324,71 +346,75 @@
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title" id="studentModalTitle">Добавить студента</h5>
+                    <h5 class="modal-title" id="studentModalTitle" data-i18n="smodal.add_title">Добавить студента</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form id="studentForm">
                     <div class="modal-body">
-                        <h6 class="text-primary border-bottom pb-2 mb-3">Основная информация</h6>
+                        <h6 class="text-primary border-bottom pb-2 mb-3" data-i18n="smodal.basic">Основная информация</h6>
                         <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Логин *</label>
-                                <input type="text" class="form-control" name="username" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Пароль *</label>
-                                <input type="password" class="form-control" name="password" required>
+                            <div class="col-12" id="credFields">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label"><span data-i18n="field.login">Логин</span> *</label>
+                                        <input type="text" class="form-control" name="username" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label"><span data-i18n="field.password">Пароль</span> *</label>
+                                        <input type="password" class="form-control" name="password" required>
+                                    </div>
+                                </div>
                             </div>
                             <div class="col-md-8">
-                                <label class="form-label">ФИО *</label>
+                                <label class="form-label"><span data-i18n="field.fio">ФИО</span> *</label>
                                 <input type="text" class="form-control" name="full_name" required>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Дата рождения *</label>
+                                <label class="form-label"><span data-i18n="field.birth_date">Дата рождения</span> *</label>
                                 <input type="date" class="form-control" name="birth_date" required>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Группа</label>
+                                <label class="form-label" data-i18n="field.group">Группа</label>
                                 <input type="text" class="form-control" name="group_name" placeholder="ПО-41">
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Школа окончания</label>
+                                <label class="form-label" data-i18n="field.school">Школа окончания</label>
                                 <input type="text" class="form-control" name="school" placeholder="№123 г. Алматы">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Email</label>
+                                <label class="form-label" data-i18n="field.email">Email</label>
                                 <input type="email" class="form-control" name="email">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Телефон</label>
+                                <label class="form-label" data-i18n="field.phone">Телефон</label>
                                 <input type="tel" class="form-control" name="phone">
                             </div>
                             <div class="col-md-12">
-                                <label class="form-label">Домашний адрес</label>
+                                <label class="form-label" data-i18n="field.home_address">Домашний адрес</label>
                                 <input type="text" class="form-control" name="home_address" placeholder="ул. Примерная, д. 1, кв. 2">
                             </div>
                         </div>
 
-                        <h6 class="text-primary border-bottom pb-2 mb-3 mt-4">Семейные данные</h6>
+                        <h6 class="text-primary border-bottom pb-2 mb-3 mt-4" data-i18n="smodal.family">Семейные данные</h6>
                         <div class="row g-3">
                             <div class="col-md-6">
-                                <label class="form-label">Тип семьи</label>
+                                <label class="form-label" data-i18n="field.family_type">Тип семьи</label>
                                 <select class="form-select" name="family_type">
-                                    <option value="full">Полная</option>
-                                    <option value="single_parent">Неполная</option>
-                                    <option value="guardian">Опека</option>
-                                    <option value="other">Другое</option>
+                                    <option value="full" data-i18n="family.full">Полная</option>
+                                    <option value="single_parent" data-i18n="family.single_parent">Неполная</option>
+                                    <option value="guardian" data-i18n="family.guardian">Опека</option>
+                                    <option value="other" data-i18n="family.other">Другое</option>
                                 </select>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">С кем проживает</label>
+                                <label class="form-label" data-i18n="field.lives_with">С кем проживает</label>
                                 <input type="text" class="form-control" name="lives_with" placeholder="Мама, папа, бабушка...">
                             </div>
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                        <button type="submit" class="btn btn-primary">Сохранить</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Отмена</button>
+                        <button type="submit" class="btn btn-primary" data-i18n="common.save">Сохранить</button>
                     </div>
                 </form>
             </div>
@@ -400,26 +426,26 @@
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header bg-success text-white">
-                    <h5 class="modal-title" id="testModalTitle">Создать тест</h5>
+                    <h5 class="modal-title" id="testModalTitle" data-i18n="tmodal.create">Создать тест</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form id="testForm">
                     <div class="modal-body">
                         <div class="row g-3 mb-4">
                             <div class="col-md-8">
-                                <label class="form-label fw-bold">Название теста *</label>
-                                <input type="text" class="form-control form-control-lg" name="title" required placeholder="Например: Шкала тревожности">
+                                <label class="form-label fw-bold"><span data-i18n="tmodal.name">Название теста</span> *</label>
+                                <input type="text" class="form-control form-control-lg" name="title" required data-i18n-ph="tmodal.name_ph" placeholder="Например: Шкала тревожности">
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label fw-bold">Описание</label>
-                                <textarea class="form-control" name="description" rows="1" placeholder="Краткое описание"></textarea>
+                                <label class="form-label fw-bold" data-i18n="tmodal.desc">Описание</label>
+                                <textarea class="form-control" name="description" rows="1" data-i18n-ph="tmodal.desc_ph" placeholder="Краткое описание"></textarea>
                             </div>
                         </div>
 
                         <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h6 class="mb-0"><i class="bi bi-list-task me-2"></i>Вопросы теста</h6>
+                            <h6 class="mb-0"><i class="bi bi-list-task me-2"></i><span data-i18n="tmodal.questions">Вопросы теста</span></h6>
                             <button type="button" class="btn btn-sm btn-outline-primary" onclick="addQuestion()">
-                                <i class="bi bi-plus-lg me-1"></i>Добавить вопрос
+                                <i class="bi bi-plus-lg me-1"></i><span data-i18n="tmodal.add_q">Добавить вопрос</span>
                             </button>
                         </div>
 
@@ -427,8 +453,8 @@
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                        <button type="submit" class="btn btn-success">Сохранить тест</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Отмена</button>
+                        <button type="submit" class="btn btn-success" data-i18n="tmodal.save">Сохранить тест</button>
                     </div>
                 </form>
             </div>
@@ -440,63 +466,63 @@
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header bg-warning">
-                    <h5 class="modal-title">Регистрация согласия родителя</h5>
+                    <h5 class="modal-title" data-i18n="cmodal.title">Регистрация согласия родителя</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <form id="consentForm">
                     <div class="modal-body">
                         <div class="alert alert-info">
                             <i class="bi bi-info-circle me-2"></i>
-                            Эта форма используется для регистрации письменного согласия законного представителя на проведение психологической диагностики несовершеннолетнего студента.
+                            <span data-i18n="cmodal.info">Эта форма используется для регистрации письменного согласия законного представителя на проведение психологической диагностики несовершеннолетнего студента.</span>
                         </div>
-                        
+
                         <div class="row g-3 mb-3">
                             <div class="col-md-12">
-                                <label class="form-label fw-bold">Студент *</label>
+                                <label class="form-label fw-bold"><span data-i18n="cmodal.student">Студент</span> *</label>
                                 <select class="form-select" name="userId" id="consentStudentSelect" required>
-                                    <option value="">Выберите студента</option>
+                                    <option value="" data-i18n="cmodal.choose_student">Выберите студента</option>
                                 </select>
                             </div>
                         </div>
 
-                        <h6 class="text-primary border-bottom pb-2 mb-3">Данные родителя (законного представителя)</h6>
+                        <h6 class="text-primary border-bottom pb-2 mb-3" data-i18n="cmodal.parent_data">Данные родителя (законного представителя)</h6>
                         <div class="row g-3">
                             <div class="col-md-8">
-                                <label class="form-label">ФИО родителя *</label>
+                                <label class="form-label"><span data-i18n="cmodal.parent_fio">ФИО родителя</span> *</label>
                                 <input type="text" class="form-control" name="parentFullName" required>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Степень родства *</label>
+                                <label class="form-label"><span data-i18n="table.relation">Степень родства</span> *</label>
                                 <select class="form-select" name="parentRelationship" required>
-                                    <option value="mother">Мать</option>
-                                    <option value="father">Отец</option>
-                                    <option value="guardian">Опекун</option>
-                                    <option value="other">Другое</option>
+                                    <option value="mother" data-i18n="rel.mother">Мать</option>
+                                    <option value="father" data-i18n="rel.father">Отец</option>
+                                    <option value="guardian" data-i18n="rel.guardian">Опекун</option>
+                                    <option value="other" data-i18n="rel.other">Другое</option>
                                 </select>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Телефон родителя</label>
+                                <label class="form-label" data-i18n="cmodal.parent_phone">Телефон родителя</label>
                                 <input type="tel" class="form-control" name="parentPhone">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Email родителя</label>
+                                <label class="form-label" data-i18n="cmodal.parent_email">Email родителя</label>
                                 <input type="email" class="form-control" name="parentEmail">
                             </div>
                         </div>
 
-                        <h6 class="text-primary border-bottom pb-2 mb-3 mt-4">Текст согласия</h6>
+                        <h6 class="text-primary border-bottom pb-2 mb-3 mt-4" data-i18n="cmodal.consent_text">Текст согласия</h6>
                         <div class="mb-3">
                             <textarea class="form-control" name="consentText" rows="6" required>Я, нижеподписавшийся, даю согласие на проведение психологической диагностики моего ребёнка, а также на психолого-педагогическое сопровождение, обработку и хранение персональных данных в соответствии с законодательством РК</textarea>
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label">Скан подписи (PDF, JPG, PNG)</label>
+                            <label class="form-label" data-i18n="cmodal.signature">Скан подписи (PDF, JPG, PNG)</label>
                             <input type="file" class="form-control" name="signature" accept=".pdf,.jpg,.jpeg,.png">
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                        <button type="submit" class="btn btn-warning">Зарегистрировать согласие</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Отмена</button>
+                        <button type="submit" class="btn btn-warning" data-i18n="cmodal.submit">Зарегистрировать согласие</button>
                     </div>
                 </form>
             </div>
@@ -508,7 +534,7 @@
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header bg-info text-white">
-                    <h5 class="modal-title">Детали результата</h5>
+                    <h5 class="modal-title" data-i18n="rmodal.title">Детали результата</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body" id="resultModalBody">
@@ -522,25 +548,25 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header bg-success text-white">
-                    <h5 class="modal-title">Назначить тест</h5>
+                    <h5 class="modal-title" data-i18n="amodal.title">Назначить тест</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form id="assignForm">
                     <div class="modal-body">
                         <input type="hidden" name="questionnaireId" id="assignQuestionnaireId">
                         <div class="mb-3">
-                            <label class="form-label">Выберите студентов</label>
+                            <label class="form-label" data-i18n="amodal.choose_students">Выберите студентов</label>
                             <div id="assignStudentsList" class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
                             </div>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Срок сдачи</label>
+                            <label class="form-label" data-i18n="amodal.due">Срок сдачи</label>
                             <input type="date" class="form-control" name="dueDate">
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                        <button type="submit" class="btn btn-success">Назначить</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Отмена</button>
+                        <button type="submit" class="btn btn-success" data-i18n="amodal.assign">Назначить</button>
                     </div>
                 </form>
             </div>
@@ -548,6 +574,9 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="i18n.js"></script>
     <script>
         let token = localStorage.getItem('token');
         let currentUser = JSON.parse(localStorage.getItem('user'));
@@ -558,6 +587,9 @@
 
         document.getElementById('adminName').textContent = currentUser.fullName;
 
+        let groupsChart = null;
+        let consentChart = null;
+
         loadDashboardStats();
         loadGroupsForFilters();
         loadStudents();
@@ -565,10 +597,18 @@
         loadConsents();
         loadTestsForFilter();
 
+        // Перерисовка динамических частей при смене языка
+        window.onLangChange = function () {
+            loadDashboardStats();
+            loadStudents();
+            loadTests();
+            loadConsents();
+        };
+
         function showSection(sectionName) {
             document.querySelectorAll('main > section').forEach(s => s.classList.add('d-none'));
             document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-            
+
             document.getElementById(`section-${sectionName}`).classList.remove('d-none');
             event.target.closest('.nav-link')?.classList.add('active');
 
@@ -588,27 +628,23 @@
                 const groupsRaw = await groupsRes.json();
                 const consentsRaw = await consentsRes.json();
 
-                // ✅ ЗАЩИТА: Проверяем что данные - это массивы
                 const students = Array.isArray(studentsRaw) ? studentsRaw : (studentsRaw?.data || []);
                 const groups = Array.isArray(groupsRaw) ? groupsRaw : (groupsRaw?.data || []);
                 const consents = Array.isArray(consentsRaw) ? consentsRaw : (consentsRaw?.data || []);
 
                 document.getElementById('totalStudents').textContent = students.length;
-                
+
                 let completed = 0;
-                groups.forEach(g => {
-                    completed += parseInt(g.completed_tests) || 0;
-                });
+                groups.forEach(g => { completed += parseInt(g.completed_tests) || 0; });
                 document.getElementById('completedTests').textContent = completed;
-                document.getElementById('pendingTests').textContent = students.length - completed;
-                
-                const noConsent = consents.filter(c => c.signature_status !== 'confirmed').length +
-                students.filter(s => s.age < 18 && !s.consent_status).length;
+                document.getElementById('pendingTests').textContent = Math.max(0, students.length - completed);
+
+                const noConsent = students.filter(s => s.age != null && s.age < 18 && s.consent_status !== 'confirmed').length;
                 document.getElementById('pendingConsents').textContent = noConsent;
 
                 const tbody = document.getElementById('groupsTableBody');
                 if (groups.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">Нет данных</td></tr>';
+                    tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">${t('common.no_data')}</td></tr>`;
                 } else {
                     tbody.innerHTML = groups.map(g => `
                         <tr>
@@ -618,7 +654,55 @@
                         </tr>
                     `).join('');
                 }
+
+                renderCharts(groups, students);
             } catch (e) { console.error(e); }
+        }
+
+        function renderCharts(groups, students) {
+            // Бар-чарт: студенты vs прошедшие по группам
+            const ctx1 = document.getElementById('groupsChart');
+            if (ctx1 && window.Chart) {
+                if (groupsChart) groupsChart.destroy();
+                groupsChart = new Chart(ctx1, {
+                    type: 'bar',
+                    data: {
+                        labels: groups.map(g => g.group_name || '—'),
+                        datasets: [
+                            { label: t('table.students'), data: groups.map(g => parseInt(g.total_students) || 0), backgroundColor: '#4361ee', borderRadius: 6 },
+                            { label: t('table.passed'), data: groups.map(g => parseInt(g.completed_tests) || 0), backgroundColor: '#06d6a0', borderRadius: 6 }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { position: 'bottom' } },
+                        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+                    }
+                });
+            }
+
+            // Доунат: статус согласий
+            const minors = students.filter(s => s.age != null && s.age < 18);
+            const confirmed = minors.filter(s => s.consent_status === 'confirmed').length;
+            const pending = minors.filter(s => s.consent_status === 'pending').length;
+            const none = minors.length - confirmed - pending;
+            const adults = students.filter(s => s.age != null && s.age >= 18).length;
+
+            const ctx2 = document.getElementById('consentChart');
+            if (ctx2 && window.Chart) {
+                if (consentChart) consentChart.destroy();
+                consentChart = new Chart(ctx2, {
+                    type: 'doughnut',
+                    data: {
+                        labels: [t('badge.confirmed'), t('badge.pending'), t('badge.not_received'), t('badge.not_required')],
+                        datasets: [{
+                            data: [confirmed, pending, none, adults],
+                            backgroundColor: ['#06d6a0', '#ffd166', '#ef476f', '#adb5bd']
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+                });
+            }
         }
 
         async function loadStudents() {
@@ -626,7 +710,7 @@
                 const params = new URLSearchParams();
                 const search = document.getElementById('searchStudent')?.value;
                 const group = document.getElementById('filterGroup')?.value;
-                
+
                 if (search) params.append('search', search);
                 if (group) params.append('group', group);
 
@@ -634,13 +718,11 @@
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const studentsRaw = await res.json();
-
-                // ✅ ЗАЩИТА: Проверяем что данные - это массив
                 const students = Array.isArray(studentsRaw) ? studentsRaw : (studentsRaw?.data || []);
 
                 const tbody = document.getElementById('studentsTableBody');
                 if (students.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">Студенты не найдены</td></tr>';
+                    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-muted">${t('students.not_found')}</td></tr>`;
                     return;
                 }
 
@@ -648,16 +730,16 @@
                     <tr>
                         <td class="fw-semibold">${s.full_name}</td>
                         <td>${formatDate(s.birth_date)}</td>
-                        <td>${s.age} лет</td>
+                        <td>${s.age != null ? s.age + ' ' + t('unit.years') : '-'}</td>
                         <td>${s.group_name || '-'}</td>
                         <td>${s.school || '-'}</td>
                         <td>${getConsentBadge(s.consent_status, s.age)}</td>
                         <td>
                             <div class="btn-group btn-group-sm">
-                                <button class="btn btn-outline-primary" onclick="editStudent(${s.id})" title="Редактировать">
+                                <button class="btn btn-outline-primary" onclick="editStudent(${s.id})" title="${t('common.edit')}">
                                     <i class="bi bi-pencil"></i>
                                 </button>
-                                <button class="btn btn-outline-danger" onclick="deleteStudent(${s.id})" title="Удалить">
+                                <button class="btn btn-outline-danger" onclick="deleteStudent(${s.id})" title="${t('common.delete')}">
                                     <i class="bi bi-trash"></i>
                                 </button>
                             </div>
@@ -668,27 +750,68 @@
         }
 
         function getConsentBadge(status, age) {
-            if (age >= 18) return '<span class="badge bg-secondary">Не требуется</span>';
-            if (!status) return '<span class="badge bg-danger">Не получено</span>';
-            if (status === 'confirmed') return '<span class="badge bg-success">Подтверждено</span>';
-            if (status === 'pending') return '<span class="badge bg-warning text-dark">Ожидает</span>';
+            if (age >= 18) return `<span class="badge bg-secondary">${t('badge.not_required')}</span>`;
+            if (!status) return `<span class="badge bg-danger">${t('badge.not_received')}</span>`;
+            if (status === 'confirmed') return `<span class="badge bg-success">${t('badge.confirmed')}</span>`;
+            if (status === 'pending') return `<span class="badge bg-warning text-dark">${t('badge.pending')}</span>`;
             return `<span class="badge bg-secondary">${status}</span>`;
         }
 
         let editingStudentId = null;
 
-        function openStudentModal(studentId = null) {
+        async function openStudentModal(studentId = null) {
             editingStudentId = studentId;
-            document.getElementById('studentForm').reset();
-            document.getElementById('studentModalTitle').textContent = studentId ? 'Редактировать студента' : 'Добавить студента';
-            
+            const form = document.getElementById('studentForm');
+            form.reset();
+
+            const cred = document.getElementById('credFields');
+            const usernameInput = form.querySelector('[name="username"]');
+            const passwordInput = form.querySelector('[name="password"]');
+
+            document.getElementById('studentModalTitle').textContent =
+                studentId ? t('smodal.edit_title') : t('smodal.add_title');
+
             if (studentId) {
+                // В режиме редактирования логин/пароль не меняются — скрываем
+                cred.classList.add('d-none');
+                usernameInput.required = false;
+                passwordInput.required = false;
+                await fillStudentForm(studentId);
+            } else {
+                cred.classList.remove('d-none');
+                usernameInput.required = true;
+                passwordInput.required = true;
             }
-            
+
             new bootstrap.Modal(document.getElementById('studentModal')).show();
         }
 
-        document.getElementById('studentForm').addEventListener('submit', async function(e) {
+        function editStudent(id) {
+            openStudentModal(id);
+        }
+
+        async function fillStudentForm(studentId) {
+            try {
+                const res = await fetch('/api/students', { headers: { 'Authorization': `Bearer ${token}` } });
+                const raw = await res.json();
+                const list = Array.isArray(raw) ? raw : (raw?.data || []);
+                const s = list.find(x => x.id === studentId);
+                if (!s) return;
+
+                const form = document.getElementById('studentForm');
+                form.full_name.value = s.full_name || '';
+                form.birth_date.value = (s.birth_date || '').toString().slice(0, 10);
+                form.group_name.value = s.group_name || '';
+                form.school.value = s.school || '';
+                form.email.value = s.email || '';
+                form.phone.value = s.phone || '';
+                form.home_address.value = s.home_address || '';
+                form.family_type.value = s.family_type || 'full';
+                form.lives_with.value = s.lives_with || '';
+            } catch (e) { console.error(e); }
+        }
+
+        document.getElementById('studentForm').addEventListener('submit', async function (e) {
             e.preventDefault();
             const formData = new FormData(this);
             const data = Object.fromEntries(formData.entries());
@@ -699,7 +822,7 @@
 
                 const res = await fetch(url, {
                     method,
-                    headers: { 
+                    headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
@@ -711,15 +834,15 @@
                 bootstrap.Modal.getInstance(document.getElementById('studentModal')).hide();
                 loadStudents();
                 loadDashboardStats();
-                alert(editingStudentId ? 'Студент обновлён!' : 'Студент добавлен!');
+                alert(editingStudentId ? t('msg.student_updated') : t('msg.student_added'));
             } catch (e) {
-                alert('Ошибка: ' + e.message);
+                alert(t('msg.error') + ': ' + e.message);
             }
         });
 
         async function deleteStudent(id) {
-            if (!confirm('Удалить этого студента?')) return;
-            
+            if (!confirm(t('msg.confirm_delete_student'))) return;
+
             try {
                 await fetch(`/api/students/${id}`, {
                     method: 'DELETE',
@@ -727,7 +850,129 @@
                 });
                 loadStudents();
                 loadDashboardStats();
-            } catch (e) { alert('Ошибка удаления'); }
+            } catch (e) { alert(t('msg.delete_error')); }
+        }
+
+        // ========== ИМПОРТ СТУДЕНТОВ ИЗ EXCEL ==========
+        const IMPORT_HEADER_MAP = {
+            'логин': 'username',
+            'пароль': 'password',
+            'фио': 'full_name',
+            'дата рождения': 'birth_date',
+            'группа': 'group_name',
+            'школа окончания': 'school',
+            'школа': 'school',
+            'email': 'email',
+            'почта': 'email',
+            'эл. почта': 'email',
+            'телефон': 'phone',
+            'домашний адрес': 'home_address',
+            'адрес': 'home_address',
+            'тип семьи': 'family_type',
+            'с кем проживает': 'lives_with',
+            'проживает с': 'lives_with'
+        };
+
+        function parseFamilyType(v) {
+            const s = String(v || '').trim().toLowerCase();
+            if (!s) return 'full';
+            if (['full', 'single_parent', 'guardian', 'other'].includes(s)) return s;
+            if (s.startsWith('полн')) return 'full';
+            if (s.startsWith('неполн')) return 'single_parent';
+            if (s.startsWith('опек')) return 'guardian';
+            if (s.startsWith('друг')) return 'other';
+            return 'full';
+        }
+
+        function normalizeDate(v) {
+            if (v == null || v === '') return null;
+            const fmt = (d) => {
+                const y = d.getFullYear();
+                const mo = String(d.getMonth() + 1).padStart(2, '0');
+                const da = String(d.getDate()).padStart(2, '0');
+                return `${y}-${mo}-${da}`;
+            };
+            if (v instanceof Date && !isNaN(v)) return fmt(v);
+            if (typeof v === 'number') {
+                const d = new Date(Math.round((v - 25569) * 86400000));
+                return isNaN(d) ? null : fmt(d);
+            }
+            const s = String(v).trim();
+            let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+            m = s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/);
+            if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+            const d = new Date(s);
+            return isNaN(d) ? null : fmt(d);
+        }
+
+        async function importStudents(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            try {
+                const buf = await file.arrayBuffer();
+                const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(ws, { defval: '', raw: true });
+
+                const students = rows.map(row => {
+                    const obj = {};
+                    for (const key in row) {
+                        const norm = String(key).trim().toLowerCase().replace(/\*/g, '').replace(/\s+/g, ' ').trim();
+                        const field = IMPORT_HEADER_MAP[norm];
+                        if (field) obj[field] = row[key];
+                    }
+                    if (obj.birth_date != null) obj.birth_date = normalizeDate(obj.birth_date);
+                    if (obj.family_type != null && obj.family_type !== '') obj.family_type = parseFamilyType(obj.family_type);
+                    for (const k in obj) if (typeof obj[k] === 'string') obj[k] = obj[k].trim();
+                    return obj;
+                }).filter(o => String(o.username || '').trim());
+
+                if (students.length === 0) {
+                    alert(t('msg.import_no_login'));
+                    event.target.value = '';
+                    return;
+                }
+
+                const res = await fetch('/api/students/import', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ students })
+                });
+
+                const result = await res.json();
+                if (!res.ok) throw new Error(result.error || 'Ошибка импорта');
+
+                let msg = `${t('msg.import_done')}: ${result.created} ${t('msg.import_of')} ${result.total}.`;
+                if (result.errors && result.errors.length) {
+                    msg += `\n\n${t('msg.import_skipped')} (${result.errors.length}):\n` + result.errors.slice(0, 15).join('\n');
+                    if (result.errors.length > 15) msg += `\n... ${t('msg.import_more')} ${result.errors.length - 15}`;
+                }
+                alert(msg);
+
+                loadStudents();
+                loadDashboardStats();
+            } catch (e) {
+                alert(t('msg.import_error') + ': ' + e.message);
+            } finally {
+                event.target.value = '';
+            }
+        }
+
+        function downloadTemplate() {
+            const headers = ['Логин', 'Пароль', 'ФИО', 'Дата рождения', 'Группа', 'Школа окончания',
+                'Email', 'Телефон', 'Домашний адрес', 'Тип семьи', 'С кем проживает'];
+            const example = ['ivanov', '', 'Иванов Иван Иванович', '2008-05-15', 'ПО-41', '№123 г. Алматы',
+                'ivanov@mail.kz', '+7 700 000 00 00', 'ул. Абая, д. 1, кв. 2', 'Полная', 'Мама, папа'];
+            const ws = XLSX.utils.aoa_to_sheet([headers, example]);
+            ws['!cols'] = headers.map(() => ({ wch: 20 }));
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Студенты');
+            XLSX.writeFile(wb, 'shablon_studentov.xlsx');
         }
 
         async function loadTests() {
@@ -736,34 +981,32 @@
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const testsRaw = await res.json();
-
-                // ✅ ЗАЩИТА: Проверяем что данные - это массив
                 const tests = Array.isArray(testsRaw) ? testsRaw : (testsRaw?.data || []);
 
                 const container = document.getElementById('testsList');
                 if (tests.length === 0) {
-                    container.innerHTML = '<div class="col-12 text-center text-muted py-5">Тесты пока не созданы</div>';
+                    container.innerHTML = `<div class="col-12 text-center text-muted py-5">${t('tests.empty')}</div>`;
                     return;
                 }
 
-                container.innerHTML = tests.map(t => `
+                container.innerHTML = tests.map(item => `
                     <div class="col-md-6 col-lg-4">
                         <div class="card h-100 test-card">
                             <div class="card-body">
-                                <h5 class="card-title">${t.title}</h5>
-                                <p class="card-text text-muted small">${t.description || 'Без описания'}</p>
+                                <h5 class="card-title">${item.title}</h5>
+                                <p class="card-text text-muted small">${item.description || ''}</p>
                                 <div class="d-flex justify-content-between align-items-center mt-3">
-                                    <span class="badge bg-primary">${t.questions_count} вопросов</span>
-                                    <small class="text-muted">${formatDate(t.created_at)}</small>
+                                    <span class="badge bg-primary">${item.questions_count} ${t('tests.q_count')}</span>
+                                    <small class="text-muted">${formatDate(item.created_at)}</small>
                                 </div>
                             </div>
                             <div class="card-footer bg-transparent border-top-0">
                                 <div class="d-grid gap-2">
-                                    <button class="btn btn-sm btn-outline-success" onclick="openAssignModal(${t.id}, '${t.title}')">
-                                        <i class="bi bi-person-plus me-1"></i>Назначить
+                                    <button class="btn btn-sm btn-outline-success" onclick="openAssignModal(${item.id}, '${(item.title || '').replace(/'/g, "\\'")}')">
+                                        <i class="bi bi-person-plus me-1"></i>${t('tests.assign')}
                                     </button>
-                                    <button class="btn btn-sm btn-outline-primary" onclick="viewTest(${t.id})">
-                                        <i class="bi bi-eye me-1"></i>Просмотреть
+                                    <button class="btn btn-sm btn-outline-primary" onclick="viewTest(${item.id})">
+                                        <i class="bi bi-eye me-1"></i>${t('tests.view')}
                                     </button>
                                 </div>
                             </div>
@@ -773,10 +1016,29 @@
             } catch (e) { console.error(e); }
         }
 
+        async function viewTest(id) {
+            try {
+                const res = await fetch(`/api/questionnaires/${id}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const q = await res.json();
+                const questions = Array.isArray(q.questions) ? q.questions : [];
+                const body = document.getElementById('resultModalBody');
+                body.innerHTML = `
+                    <h5>${q.title}</h5>
+                    <p class="text-muted">${q.description || ''}</p>
+                    <hr>
+                    <ol class="ps-3">
+                        ${questions.map(qq => `<li class="mb-2">${qq.question_text} <span class="badge bg-light text-dark">${qq.question_type}</span></li>`).join('')}
+                    </ol>
+                `;
+                new bootstrap.Modal(document.getElementById('resultModal')).show();
+            } catch (e) { alert(t('msg.test_load_error')); }
+        }
+
         let questionCounter = 0;
 
         function openTestModal() {
             questionCounter = 0;
+            document.getElementById('testForm').reset();
             document.getElementById('questionsContainer').innerHTML = '';
             addQuestion();
             new bootstrap.Modal(document.getElementById('testModal')).show();
@@ -785,17 +1047,17 @@
         function addQuestion() {
             const container = document.getElementById('questionsContainer');
             const qNum = ++questionCounter;
-            
+
             const questionHtml = `
                 <div class="card mb-3 question-card" id="question-${qNum}">
                     <div class="card-header d-flex justify-content-between align-items-center py-2">
-                        <span class="fw-bold">Вопрос ${qNum}</span>
+                        <span class="fw-bold">${t('q.label')} ${qNum}</span>
                         <div class="d-flex gap-2">
                             <select class="form-select form-select-sm" style="width:auto;" onchange="updateQuestionType(${qNum}, this.value)">
-                                <option value="single">Один ответ</option>
-                                <option value="multiple">Несколько ответов</option>
-                                <option value="scale">Шкала</option>
-                                <option value="text">Текстовый</option>
+                                <option value="single">${t('q.single')}</option>
+                                <option value="multiple">${t('q.multiple')}</option>
+                                <option value="scale">${t('q.scale')}</option>
+                                <option value="text">${t('q.text')}</option>
                             </select>
                             <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeQuestion(${qNum})">
                                 <i class="bi bi-x-lg"></i>
@@ -804,18 +1066,18 @@
                     </div>
                     <div class="card-body">
                         <div class="mb-3">
-                            <input type="text" class="form-control" name="questions[${qNum}][questionText]" 
-                                   placeholder="Текст вопроса *" required>
+                            <input type="text" class="form-control" name="questions[${qNum}][questionText]"
+                                   placeholder="${t('q.text_ph')}" required>
                         </div>
                         <div class="question-options" id="options-${qNum}">
-                            <label class="form-label small">Варианты ответов:</label>
+                            <label class="form-label small">${t('q.options')}</label>
                             <div class="options-list">
                                 <div class="input-group input-group-sm mb-2">
-                                    <input type="text" class="form-control option-input" placeholder="Вариант 1">
+                                    <input type="text" class="form-control option-input" placeholder="1">
                                     <button type="button" class="btn btn-outline-secondary" onclick="addOption(this)">+</button>
                                 </div>
                                 <div class="input-group input-group-sm mb-2">
-                                    <input type="text" class="form-control option-input" placeholder="Вариант 2">
+                                    <input type="text" class="form-control option-input" placeholder="2">
                                     <button type="button" class="btn btn-outline-secondary" onclick="addOption(this)">+</button>
                                 </div>
                             </div>
@@ -823,23 +1085,23 @@
                         <div class="scale-options d-none" id="scale-${qNum}">
                             <div class="row g-2">
                                 <div class="col-3">
-                                    <label class="form-label small">Минимум</label>
+                                    <label class="form-label small">${t('q.min')}</label>
                                     <input type="number" class="form-control form-control-sm" value="1" name="questions[${qNum}][scaleMin]">
                                 </div>
                                 <div class="col-3">
-                                    <label class="form-label small">Максимум</label>
+                                    <label class="form-label small">${t('q.max')}</label>
                                     <input type="number" class="form-control form-control-sm" value="5" name="questions[${qNum}][scaleMax]">
                                 </div>
                             </div>
                         </div>
                         <div class="form-check mt-2">
                             <input class="form-check-input" type="checkbox" checked name="questions[${qNum}][isRequired]">
-                            <label class="form-check-label small">Обязательный вопрос</label>
+                            <label class="form-check-label small">${t('q.required')}</label>
                         </div>
                     </div>
                 </div>
             `;
-            
+
             container.insertAdjacentHTML('beforeend', questionHtml);
         }
 
@@ -850,7 +1112,7 @@
         function updateQuestionType(qNum, type) {
             const optionsDiv = document.getElementById(`options-${qNum}`);
             const scaleDiv = document.getElementById(`scale-${qNum}`);
-            
+
             if (type === 'scale') {
                 optionsDiv.classList.add('d-none');
                 scaleDiv.classList.remove('d-none');
@@ -869,25 +1131,25 @@
             const newOpt = document.createElement('div');
             newOpt.className = 'input-group input-group-sm mb-2';
             newOpt.innerHTML = `
-                <input type="text" class="form-control option-input" placeholder="Вариант ${count}">
+                <input type="text" class="form-control option-input" placeholder="${count}">
                 <button type="button" class="btn btn-outline-secondary" onclick="addOption(this)">+</button>
                 <button type="button" class="btn btn-outline-danger" onclick="this.parentElement.remove()">×</button>
             `;
             list.appendChild(newOpt);
         }
 
-        document.getElementById('testForm').addEventListener('submit', async function(e) {
+        document.getElementById('testForm').addEventListener('submit', async function (e) {
             e.preventDefault();
-            
+
             const title = this.title.value;
             const description = this.description.value;
             const questions = [];
 
-            document.querySelectorAll('.question-card').forEach((card, idx) => {
+            document.querySelectorAll('.question-card').forEach((card) => {
                 const qType = card.querySelector('select').value;
                 const qText = card.querySelector('input[name*="questionText"]').value;
                 const isRequired = card.querySelector('[name*="isRequired"]')?.checked ?? true;
-                
+
                 let options = [];
                 if (qType === 'single' || qType === 'multiple') {
                     card.querySelectorAll('.option-input').forEach(input => {
@@ -906,7 +1168,7 @@
             });
 
             if (questions.length === 0 || !title) {
-                alert('Заполните название и добавьте хотя бы один вопрос!');
+                alert(t('msg.test_fill'));
                 return;
             }
 
@@ -924,27 +1186,26 @@
 
                 bootstrap.Modal.getInstance(document.getElementById('testModal')).hide();
                 loadTests();
-                alert('Тест успешно создан!');
+                loadTestsForFilter();
+                alert(t('msg.test_created'));
             } catch (e) {
-                alert('Ошибка: ' + e.message);
+                alert(t('msg.error') + ': ' + e.message);
             }
         });
 
         async function openAssignModal(testId, testName) {
             document.getElementById('assignQuestionnaireId').value = testId;
-            
+
             const res = await fetch('/api/students', { headers: { 'Authorization': `Bearer ${token}` }});
             const studentsRaw = await res.json();
-            
-            // ✅ ЗАЩИТА: Проверяем что данные - это массив
             const students = Array.isArray(studentsRaw) ? studentsRaw : (studentsRaw?.data || []);
-            
+
             const list = document.getElementById('assignStudentsList');
             list.innerHTML = students.map(s => `
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" value="${s.id}" id="student-${s.id}" name="userIds">
                     <label class="form-check-label" for="student-${s.id}">
-                        ${s.full_name} (${s.group_name || 'без группы'}, ${s.age} лет)
+                        ${s.full_name} (${s.group_name || '-'}, ${s.age != null ? s.age + ' ' + t('unit.years') : '-'})
                     </label>
                 </div>
             `).join('');
@@ -952,14 +1213,14 @@
             new bootstrap.Modal(document.getElementById('assignModal')).show();
         }
 
-        document.getElementById('assignForm').addEventListener('submit', async function(e) {
+        document.getElementById('assignForm').addEventListener('submit', async function (e) {
             e.preventDefault();
-            
+
             const checkboxes = this.querySelectorAll('input[name="userIds"]:checked');
             const userIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
-            
+
             if (userIds.length === 0) {
-                alert('Выберите хотя бы одного студента!');
+                alert(t('msg.select_student'));
                 return;
             }
 
@@ -980,9 +1241,9 @@
                 if (!res.ok) throw new Error(await res.text());
 
                 bootstrap.Modal.getInstance(document.getElementById('assignModal')).hide();
-                alert(`Тест назначен ${userIds.length} студентам!`);
+                alert(t('msg.test_assigned') + ': ' + userIds.length);
             } catch (e) {
-                alert('Ошибка: ' + e.message);
+                alert(t('msg.error') + ': ' + e.message);
             }
         });
 
@@ -990,16 +1251,13 @@
             try {
                 const res = await fetch('/api/questionnaires', { headers: { 'Authorization': `Bearer ${token}` }});
                 const testsRaw = await res.json();
-                
-                // ✅ ЗАЩИТА: Проверяем что данные - это массив
                 const tests = Array.isArray(testsRaw) ? testsRaw : (testsRaw?.data || []);
-                
-                ['resultTest'].forEach(selectId => {
-                    const select = document.getElementById(selectId);
-                    tests.forEach(t => {
-                        select.innerHTML += `<option value="${t.id}">${t.title}</option>`;
-                    });
-                });
+
+                const select = document.getElementById('resultTest');
+                if (select) {
+                    select.innerHTML = `<option value="">${t('common.all_tests')}</option>` +
+                        tests.map(item => `<option value="${item.id}">${item.title}</option>`).join('');
+                }
             } catch (e) {}
         }
 
@@ -1010,7 +1268,7 @@
                 const test = document.getElementById('resultTest')?.value;
                 const from = document.getElementById('dateFrom')?.value;
                 const to = document.getElementById('dateTo')?.value;
-                
+
                 if (group) params.append('groupId', group);
                 if (test) params.append('questionnaireId', test);
                 if (from) params.append('startDate', from);
@@ -1020,13 +1278,11 @@
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const resultsRaw = await res.json();
-
-                // ✅ ЗАЩИТА: Проверяем что данные - это массив
                 const results = Array.isArray(resultsRaw) ? resultsRaw : (resultsRaw?.data || []);
 
                 const tbody = document.getElementById('resultsTableBody');
                 if (results.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">Результаты не найдены</td></tr>';
+                    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">${t('results.not_found')}</td></tr>`;
                     return;
                 }
 
@@ -1057,26 +1313,23 @@
             try {
                 const res = await fetch('/api/results', { headers: { 'Authorization': `Bearer ${token}` }});
                 const resultsRaw = await res.json();
-                
-                // ✅ ЗАЩИТА: Проверяем что данные - это массив
                 const results = Array.isArray(resultsRaw) ? resultsRaw : (resultsRaw?.data || []);
-                
+
                 const result = results.find(r => r.id === resultId);
-                
                 if (!result) return;
 
                 const body = document.getElementById('resultModalBody');
                 body.innerHTML = `
                     <h5>${result.full_name}</h5>
-                    <p class="text-muted">Тест: ${result.questionnaire_title} | Балл: <strong>${result.score}</strong></p>
+                    <p class="text-muted">${t('table.test')}: ${result.questionnaire_title} | ${t('table.score')}: <strong>${result.score}</strong></p>
                     <hr>
-                    <h6>Ответы:</h6>
+                    <h6>${t('rmodal.answers')}</h6>
                     <div class="table-responsive">
                         <table class="table table-sm">
-                            <thead><tr><th>#</th><th>Ответ</th></tr></thead>
+                            <thead><tr><th>#</th><th>${t('rmodal.answers')}</th></tr></thead>
                             <tbody>
-                                ${Object.entries(result.answers || {}).map(([key, val], i) => `
-                                    <tr><td>${parseInt(key)+1}</td><td>${Array.isArray(val) ? val.join(', ') : val}</td></tr>
+                                ${Object.entries(result.answers || {}).map(([key, val]) => `
+                                    <tr><td>${parseInt(key) + 1}</td><td>${Array.isArray(val) ? val.join(', ') : val}</td></tr>
                                 `).join('')}
                             </tbody>
                         </table>
@@ -1087,21 +1340,36 @@
             } catch (e) {}
         }
 
+        // ========== ЭКСПОРТ РЕЗУЛЬТАТОВ В EXCEL ==========
         async function exportResults() {
             try {
                 const res = await fetch('/api/export/json', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
-                
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `diagnostic-results-${new Date().toISOString().split('T')[0]}.json`;
-                a.click();
+                const records = Array.isArray(data?.data) ? data.data : [];
+
+                if (records.length === 0) {
+                    alert(t('msg.no_results_export'));
+                    return;
+                }
+
+                const rows = records.map(r => ({
+                    'ФИО': r.full_name || '',
+                    'Группа': r.group_name || '',
+                    'Тест': r.test_title || '',
+                    'Балл': r.score,
+                    'Статус': r.status || '',
+                    'Дата завершения': r.completed_at ? new Date(r.completed_at).toLocaleString('ru-RU') : ''
+                }));
+
+                const ws = XLSX.utils.json_to_sheet(rows);
+                ws['!cols'] = [{ wch: 28 }, { wch: 12 }, { wch: 28 }, { wch: 8 }, { wch: 14 }, { wch: 20 }];
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Результаты');
+                XLSX.writeFile(wb, `diagnostic-results-${new Date().toISOString().split('T')[0]}.xlsx`);
             } catch (e) {
-                alert('Ошибка экспорта');
+                alert(t('msg.export_error'));
             }
         }
 
@@ -1109,52 +1377,49 @@
             try {
                 const res = await fetch('/api/consents', { headers: { 'Authorization': `Bearer ${token}` }});
                 const consentsRaw = await res.json();
-
-                // ✅ ЗАЩИТА: Проверяем что данные - это массив
                 const consents = Array.isArray(consentsRaw) ? consentsRaw : (consentsRaw?.data || []);
 
                 const tbody = document.getElementById('consentsTableBody');
                 if (consents.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">Согласий нет</td></tr>';
-                    return;
+                    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-muted">${t('consents.empty')}</td></tr>`;
+                } else {
+                    tbody.innerHTML = consents.map(c => {
+                        const age = c.birth_date ? Math.floor((new Date() - new Date(c.birth_date)) / (365.25 * 24 * 60 * 60 * 1000)) : '?';
+                        return `
+                            <tr>
+                                <td class="fw-semibold">${c.student_name}</td>
+                                <td>${age} ${t('unit.years')}</td>
+                                <td>${c.parent_full_name}</td>
+                                <td>${getRelationLabel(c.parent_relationship)}</td>
+                                <td>${getConsentStatusLabel(c.signature_status)}</td>
+                                <td>${formatDate(c.consent_date)}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-warning" onclick="updateConsentStatus(${c.id})">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
                 }
-
-                tbody.innerHTML = consents.map(c => {
-                    const age = c.birth_date ? Math.floor((new Date() - new Date(c.birth_date)) / (365.25*24*60*60*1000)) : '?';
-                    return `
-                        <tr>
-                            <td class="fw-semibold">${c.student_name}</td>
-                            <td>${age} лет</td>
-                            <td>${c.parent_full_name}</td>
-                            <td>${getRelationLabel(c.parent_relationship)}</td>
-                            <td>${getConsentStatusLabel(c.signature_status)}</td>
-                            <td>${formatDate(c.consent_date)}</td>
-                            <td>
-                                <button class="btn btn-sm btn-outline-warning" onclick="updateConsentStatus(${c.id})">
-                                    <i class="bi bi-pencil"></i>
-                                </button>
-                            </td>
-                        </tr>
-                    `;
-                }).join('');
 
                 const select = document.getElementById('consentStudentSelect');
                 const uniqueStudents = [...new Map(consents.map(c => [c.user_id, c])).values()];
-                select.innerHTML = '<option value="">Выберите студента</option>' +
+                select.innerHTML = `<option value="">${t('cmodal.choose_student')}</option>` +
                     uniqueStudents.map(c => `<option value="${c.user_id}">${c.student_name}</option>`).join('');
             } catch (e) { console.error(e); }
         }
 
         function getRelationLabel(rel) {
-            const labels = { mother: 'Мать', father: 'Отец', guardian: 'Опекун', other: 'Другое' };
-            return labels[rel] || rel;
+            const map = { mother: 'rel.mother', father: 'rel.father', guardian: 'rel.guardian', other: 'rel.other' };
+            return map[rel] ? t(map[rel]) : rel;
         }
 
         function getConsentStatusLabel(status) {
             const badges = {
-                pending: '<span class="badge bg-warning text-dark">Ожидает</span>',
-                confirmed: '<span class="badge bg-success">Подтверждено</span>',
-                rejected: '<span class="badge bg-danger">Отклонено</span>'
+                pending: `<span class="badge bg-warning text-dark">${t('badge.pending')}</span>`,
+                confirmed: `<span class="badge bg-success">${t('badge.confirmed')}</span>`,
+                rejected: `<span class="badge bg-danger">${t('badge.rejected')}</span>`
             };
             return badges[status] || status;
         }
@@ -1163,11 +1428,11 @@
             new bootstrap.Modal(document.getElementById('consentModal')).show();
         }
 
-        document.getElementById('consentForm').addEventListener('submit', async function(e) {
+        document.getElementById('consentForm').addEventListener('submit', async function (e) {
             e.preventDefault();
-            
+
             const formData = new FormData(this);
-            
+
             try {
                 const res = await fetch('/api/consents', {
                     method: 'POST',
@@ -1180,14 +1445,14 @@
                 bootstrap.Modal.getInstance(document.getElementById('consentModal')).hide();
                 loadConsents();
                 loadDashboardStats();
-                alert('Согласие зарегистрировано!');
+                alert(t('msg.consent_registered'));
             } catch (err) {
-                alert('Ошибка: ' + err.message);
+                alert(t('msg.error') + ': ' + err.message);
             }
         });
 
         function updateConsentStatus(consentId) {
-            const newStatus = prompt('Введите новый статус (pending/confirmed/rejected):');
+            const newStatus = prompt(t('msg.prompt_status'));
             if (!newStatus) return;
 
             fetch(`/api/consents/${consentId}`, {
@@ -1207,10 +1472,8 @@
             try {
                 const res = await fetch('/api/groups', { headers: { 'Authorization': `Bearer ${token}` }});
                 const groupsRaw = await res.json();
-                
-                // ✅ ЗАЩИТА: Проверяем что данные - это массив
                 const groups = Array.isArray(groupsRaw) ? groupsRaw : (groupsRaw?.data || []);
-                
+
                 ['filterGroup', 'resultGroup'].forEach(selectId => {
                     const select = document.getElementById(selectId);
                     if (select) {
@@ -1224,12 +1487,12 @@
 
         function formatDate(dateStr) {
             if (!dateStr) return '-';
-            return new Date(dateStr).toLocaleDateString('ru-RU');
+            return new Date(dateStr).toLocaleDateString(getLang() === 'kz' ? 'kk-KZ' : 'ru-RU');
         }
 
         function formatDateTime(dateStr) {
             if (!dateStr) return '-';
-            return new Date(dateStr).toLocaleString('ru-RU');
+            return new Date(dateStr).toLocaleString(getLang() === 'kz' ? 'kk-KZ' : 'ru-RU');
         }
 
         function logout() {
