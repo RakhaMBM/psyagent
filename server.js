@@ -6,6 +6,7 @@ const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const XLSX = require('xlsx');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -131,7 +132,7 @@ async function checkAgeConsent(req, res, next) {
 }
 
 // Логирование действий
-async function logAction(userId, action, entityType, entityId, details) {
+async function logAction(req, userId, action, entityType, entityId, details) {
     try {
         await pool.execute(
             'INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
@@ -175,7 +176,7 @@ app.post('/api/auth/login', async (req, res) => {
             { expiresIn: '24h' }
         );
         
-        await logAction(user.id, 'LOGIN', 'user', user.id, { success: true });
+        await logAction(req, user.id, 'LOGIN', 'user', user.id, { success: true });
         
         res.json({
             token,
@@ -322,7 +323,7 @@ app.post('/api/students', authenticateToken, requireAdmin, async (req, res) => {
                 [userId, family_type || 'full', lives_with || '', school || null, home_address || null]
             );
             
-            await logAction(req.user.id, 'CREATE_STUDENT', 'user', userId, { fullName: full_name });
+            await logAction(req, req.user.id, 'CREATE_STUDENT', 'user', userId, { fullName: full_name });
             
             await conn.commit();
             res.status(201).json({ message: 'Студент создан успешно', userId });
@@ -368,7 +369,7 @@ app.put('/api/students/:id', authenticateToken, requireAdmin, async (req, res) =
                 [data.family_type, data.lives_with, data.school, data.home_address, id]
             );
             
-            await logAction(req.user.id, 'UPDATE_STUDENT', 'user', parseInt(id), data);
+            await logAction(req, req.user.id, 'UPDATE_STUDENT', 'user', parseInt(id), data);
             
             await conn.commit();
             res.json({ message: 'Данные обновлены' });
@@ -388,7 +389,7 @@ app.put('/api/students/:id', authenticateToken, requireAdmin, async (req, res) =
 app.delete('/api/students/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         await pool.execute('UPDATE users SET is_active = FALSE WHERE id = ?', [req.params.id]);
-        await logAction(req.user.id, 'DELETE_STUDENT', 'user', parseInt(req.params.id));
+        await logAction(req, req.user.id, 'DELETE_STUDENT', 'user', parseInt(req.params.id));
         res.json({ message: 'Студент деактивирован' });
     } catch (error) {
         console.error('Ошибка удаления:', error);
@@ -447,7 +448,7 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
             );
         }
         
-        await logAction(req.user.id, 'UPDATE_PROFILE', 'profile', req.user.id);
+        await logAction(req, req.user.id, 'UPDATE_PROFILE', 'profile', req.user.id);
         res.json({ message: 'Профиль сохранён' });
     } catch (error) {
         console.error('Ошибка сохранения профиля:', error);
@@ -516,7 +517,7 @@ app.post('/api/questionnaires', authenticateToken, requireAdmin, async (req, res
                 );
             }
             
-            await logAction(req.user.id, 'CREATE_QUESTIONNAIRE', 'questionnaire', questionnaireId, { title });
+            await logAction(req, req.user.id, 'CREATE_QUESTIONNAIRE', 'questionnaire', questionnaireId, { title });
             
             await conn.commit();
             res.status(201).json({ message: 'Опросник создан', id: questionnaireId });
@@ -602,7 +603,7 @@ app.post('/api/assign-test', authenticateToken, requireAdmin, async (req, res) =
             );
         }
         
-        await logAction(req.user.id, 'ASSIGN_TEST', 'assignment', null, { 
+        await logAction(req, req.user.id, 'ASSIGN_TEST', 'assignment', null, { 
             questionnaireId, studentsCount: userIds.length 
         });
         
@@ -720,7 +721,7 @@ app.post('/api/results/complete', authenticateToken, checkAgeConsent, async (req
             [req.user.id, results[0].questionnaire_id]
         );
         
-        await logAction(req.user.id, 'COMPLETE_TEST', 'result', resultId, { score: avgScore });
+        await logAction(req, req.user.id, 'COMPLETE_TEST', 'result', resultId, { score: avgScore });
         
         res.json({ message: 'Тест завершён', score: parseFloat(avgScore) });
     } catch (error) {
@@ -895,7 +896,7 @@ app.post('/api/consents', authenticateToken, requireAdmin, upload.single('signat
              consentText, signaturePath, req.user.id]
         );
         
-        await logAction(req.user.id, 'CREATE_CONSENT', 'consent', parseInt(userId), { status: 'confirmed' });
+        await logAction(req, req.user.id, 'CREATE_CONSENT', 'consent', parseInt(userId), { status: 'confirmed' });
         
         res.status(201).json({ message: 'Согласие зарегистрировано' });
     } catch (error) {
@@ -915,7 +916,7 @@ app.patch('/api/consents/:id', authenticateToken, requireAdmin, async (req, res)
             [status, notes, req.params.id]
         );
         
-        await logAction(req.user.id, 'UPDATE_CONSENT', 'consent', parseInt(req.params.id), { status });
+        await logAction(req, req.user.id, 'UPDATE_CONSENT', 'consent', parseInt(req.params.id), { status });
         
         res.json({ message: 'Статус обновлён' });
     } catch (error) {
@@ -1020,7 +1021,6 @@ app.post('/api/students/import', uploadExcel.single('file'), async (req, res) =>
             cellDates: true,
             // ✅ Ключевые опции для кириллицы:
             codepage: 65001,           // UTF-8
-            type: 'array',
             raw: false,
             defval: ''                // Пустая строка вместо undefined
         });
@@ -1135,7 +1135,7 @@ app.post('/api/students/import', uploadExcel.single('file'), async (req, res) =>
                 }
 
                 // Проверка на дубликат пользователя
-                const [existing] = await db.query(
+                const [existing] = await pool.execute(
                     'SELECT id FROM users WHERE username = ?',
                     [username]
                 );
@@ -1263,7 +1263,7 @@ app.post('/api/students/import', uploadExcel.single('file'), async (req, res) =>
                 // ====== ВСТАВКА В БАЗУ ДАННЫХ ======
                 
                 // 1. Создаём пользователя
-                const [userResult] = await db.query(
+                const [userResult] = await pool.execute(
                     `INSERT INTO users 
                     (username, password, full_name, role, birth_date, group_name, email, phone, is_active, created_at, updated_at) 
                     VALUES (?, ?, ?, 'student', ?, ?, ?, ?, 1, NOW(), NOW())`,
@@ -1274,7 +1274,7 @@ app.post('/api/students/import', uploadExcel.single('file'), async (req, res) =>
 
                 // 2. Создаём профиль студента
                 if (school || homeAddress || familyType || livesWith) {
-                    await db.query(
+                    await pool.execute(
                         `INSERT INTO student_profiles 
                         (user_id, family_type, lives_with, school, home_address, created_at, updated_at) 
                         VALUES (?, ?, ?, ?, ?, NOW(), NOW())
