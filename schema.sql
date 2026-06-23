@@ -31,6 +31,8 @@ CREATE TABLE student_profiles (
     user_id INT UNIQUE NOT NULL,
     family_type ENUM('full', 'single_parent', 'guardian', 'other') NOT NULL,
     lives_with TEXT COMMENT 'С кем проживает студент',
+    school VARCHAR(255),
+    home_address TEXT,
     brothers_count INT DEFAULT 0,
     sisters_count INT DEFAULT 0,
     psychologist_notes TEXT COMMENT 'Примечания педагога-психолога',
