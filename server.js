@@ -131,11 +131,11 @@ async function checkAgeConsent(req, res, next) {
 }
 
 // Логирование действий
-async function logAction(userId, action, entityType, entityId, details) {
+async function logAction(userId, action, entityType, entityId, details = null, ipAddress = null) {
     try {
         await pool.execute(
             'INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
-            [userId, action, entityType, entityId, JSON.stringify(details), req?.ip || null]
+            [userId, action, entityType, entityId, details != null ? JSON.stringify(details) : null, ipAddress]
         );
     } catch (e) { /* игнорируем ошибки логирования */ }
 }
@@ -554,7 +554,7 @@ app.get('/api/questionnaires/:id', authenticateToken, async (req, res) => {
             questions: questions.map(q => ({
                 ...q,
                 options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options,
-                scaleLabels: typeof q.scaleLabels === 'string' ? JSON.parse(q.scaleLabels) : q.scaleLabels
+                scaleLabels: typeof q.scale_labels === 'string' ? JSON.parse(q.scale_labels) : q.scale_labels
             }))
         });
     } catch (error) {
@@ -978,10 +978,6 @@ app.get('/admin', (req, res) => {
 
 app.get('/student', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'student.html'));
-});
-
-app.get('/consent', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'consent.html'));
 });
 
 // Запуск сервера

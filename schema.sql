@@ -16,8 +16,6 @@ CREATE TABLE users (
     role ENUM('admin', 'student') NOT NULL DEFAULT 'student',
     birth_date DATE,
     group_name VARCHAR(100),
-    course INT,
-    specialty VARCHAR(200),
     email VARCHAR(150),
     phone VARCHAR(20),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -31,8 +29,8 @@ CREATE TABLE student_profiles (
     user_id INT UNIQUE NOT NULL,
     family_type ENUM('full', 'single_parent', 'guardian', 'other') NOT NULL,
     lives_with TEXT COMMENT 'С кем проживает студент',
-    brothers_count INT DEFAULT 0,
-    sisters_count INT DEFAULT 0,
+    school VARCHAR(255) COMMENT 'Школа, которую окончил',
+    home_address VARCHAR(500) COMMENT 'Домашний адрес',
     psychologist_notes TEXT COMMENT 'Примечания педагога-психолога',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -131,13 +129,23 @@ CREATE TABLE audit_log (
 
 -- Индексы для оптимизации
 CREATE INDEX idx_users_role ON users(role);
-CREATE INDEX idx_users_group ON users(group_name, course);
+CREATE INDEX idx_users_group ON users(group_name);
 CREATE INDEX idx_results_user ON results(user_id);
 CREATE INDEX idx_results_questionnaire ON results(questionnaire_id);
 CREATE INDEX idx_assignments_user ON assignments(user_id, status);
 CREATE INDEX idx_consents_user ON parental_consents(user_id, signature_status);
 
 -- Вставка администратора по умолчанию
-INSERT INTO users (username, password, full_name, role, email) 
-VALUES ('admin', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 
+-- Учётные данные для входа: логин = admin, пароль = password
+INSERT INTO users (username, password, full_name, role, email)
+VALUES ('admin', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
         'Администратор Психолог', 'admin', 'admin@college.ru');
+
+-- ============================================
+-- ПОЛЬЗОВАТЕЛЬ ПРИЛОЖЕНИЯ
+-- Должен совпадать с настройками подключения в server.js
+-- (DB_USER / DB_PASSWORD). Запускать от имени root.
+-- ============================================
+CREATE USER IF NOT EXISTS 'psyagent_user'@'localhost' IDENTIFIED BY 'Ewe123123!';
+GRANT ALL PRIVILEGES ON psych_diagnostic.* TO 'psyagent_user'@'localhost';
+FLUSH PRIVILEGES;
