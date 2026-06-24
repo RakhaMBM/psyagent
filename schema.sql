@@ -80,26 +80,6 @@ CREATE TABLE results (
     FOREIGN KEY (questionnaire_id) REFERENCES questionnaires(id) ON DELETE CASCADE
 );
 
--- Согласие родителей
-CREATE TABLE parental_consents (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT UNIQUE NOT NULL,
-    parent_full_name VARCHAR(255) NOT NULL,
-    parent_relationship ENUM('mother', 'father', 'guardian', 'other') NOT NULL,
-    parent_phone VARCHAR(20),
-    parent_email VARCHAR(150),
-    consent_text LONGTEXT NOT NULL,
-    consent_date DATE,
-    signature_status ENUM('pending', 'confirmed', 'rejected') DEFAULT 'pending',
-    signature_image_path VARCHAR(500) COMMENT 'Путь к скану подписи',
-    notes TEXT,
-    created_by INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (created_by) REFERENCES users(id)
-);
-
 -- Назначения тестов студентам
 CREATE TABLE assignments (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -133,7 +113,6 @@ CREATE INDEX idx_users_group ON users(group_name);
 CREATE INDEX idx_results_user ON results(user_id);
 CREATE INDEX idx_results_questionnaire ON results(questionnaire_id);
 CREATE INDEX idx_assignments_user ON assignments(user_id, status);
-CREATE INDEX idx_consents_user ON parental_consents(user_id, signature_status);
 
 -- Вставка администратора по умолчанию
 -- Учётные данные для входа: логин = admin, пароль = password

@@ -24,12 +24,6 @@
         </div>
     </nav>
 
-    <div id="ageWarning" class="alert alert-warning m-3 d-none" role="alert">
-        <i class="bi bi-exclamation-triangle me-2"></i>
-        <strong data-i18n="age.warn_strong">Внимание!</strong> <span data-i18n="age.warn_text">Вам менее 18 лет. Для прохождения диагностики требуется согласие родителя.</span>
-        <br><small data-i18n="age.warn_hint">Обратитесь к педагогу-психологу для оформления согласия.</small>
-    </div>
-
     <main class="content-wrapper pt-5 mt-5 p-4">
         <div class="row mb-4">
             <div class="col-md-4">
@@ -179,12 +173,6 @@
                 });
 
                 if (!res.ok) {
-                    if (res.status === 403) {
-                        const err = await res.json();
-                        if (err.error === 'CONSENT_REQUIRED') {
-                            showConsentWarning(err.hasConsent);
-                        }
-                    }
                     throw new Error('Ошибка загрузки');
                 }
 
@@ -199,32 +187,11 @@
                 document.getElementById('profileSchool').textContent = user.school || '-';
                 document.getElementById('profileAddress').textContent = user.home_address || '-';
 
-                if (!user.isAdult && user.consentStatus !== 'confirmed') {
-                    showConsentWarning(user.consentStatus);
-                }
-
                 loadProfile();
                 loadMyTests();
 
             } catch (e) {
                 console.error(e);
-            }
-        }
-
-        function showConsentWarning(status) {
-            const warning = document.getElementById('ageWarning');
-            warning.classList.remove('d-none');
-            if (status === 'pending') {
-                warning.innerHTML = `
-                    <i class="bi bi-clock me-2"></i>
-                    <strong>${t('badge.pending')}.</strong> ${t('msg.consent_pending')}
-                `;
-            } else if (!status) {
-                warning.innerHTML = `
-                    <i class="bi bi-exclamation-triangle me-2"></i>
-                    <strong>${t('age.warn_strong')}</strong> ${t('age.warn_text')}
-                    <br><small>${t('age.warn_hint')}</small>
-                `;
             }
         }
 
@@ -289,17 +256,6 @@
 
                 if (!res.ok) {
                     const err = await res.json();
-                    if (err.error === 'CONSENT_REQUIRED') {
-                        document.getElementById('testsContainer').innerHTML = `
-                            <div class="alert alert-warning text-center">
-                                <i class="bi bi-shield-lock display-4 d-block mb-2"></i>
-                                <h5>${t('msg.access_limited')}</h5>
-                                <p>${t('msg.access_need_consent')}</p>
-                                <p class="small mb-0">${t('table.status')}: ${err.hasConsent === 'pending' ? t('badge.pending') : t('badge.not_received')}</p>
-                            </div>
-                        `;
-                        return;
-                    }
                     throw new Error(err.error);
                 }
 
