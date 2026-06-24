@@ -114,6 +114,8 @@
             // Назначение
             'amodal.title': 'Назначить тест',
             'amodal.choose_students': 'Выберите студентов',
+            'amodal.select_all': 'Выбрать всех',
+            'amodal.no_group': 'Без группы',
             'amodal.due': 'Срок сдачи',
             'amodal.assign': 'Назначить',
             // Единицы
@@ -295,6 +297,8 @@
             'rmodal.interpretation': 'Түсіндірме',
             'amodal.title': 'Тест тағайындау',
             'amodal.choose_students': 'Студенттерді таңдаңыз',
+            'amodal.select_all': 'Барлығын таңдау',
+            'amodal.no_group': 'Топсыз',
             'amodal.due': 'Тапсыру мерзімі',
             'amodal.assign': 'Тағайындау',
             'unit.years': 'жас',

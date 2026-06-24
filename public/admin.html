@@ -923,6 +923,9 @@
                 form.title.readOnly = true;
                 form.description.readOnly = true;
                 builder.classList.add('d-none');
+                // Убираем поля ручного конструктора: скрытые required-инпуты иначе
+                // блокируют отправку формы (валидация не может сфокусировать скрытое поле)
+                document.getElementById('questionsContainer').innerHTML = '';
                 preview.classList.remove('d-none');
                 preview.innerHTML = `
                     <div class="alert alert-light border">
@@ -1136,16 +1139,71 @@
             const students = Array.isArray(studentsRaw) ? studentsRaw : (studentsRaw?.data || []);
 
             const list = document.getElementById('assignStudentsList');
-            list.innerHTML = students.map(s => `
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" value="${s.id}" id="student-${s.id}" name="userIds">
-                    <label class="form-check-label" for="student-${s.id}">
-                        ${s.full_name} (${s.group_name || '-'}, ${s.age != null ? s.age + ' ' + t('unit.years') : '-'})
-                    </label>
-                </div>
-            `).join('');
 
+            if (students.length === 0) {
+                list.innerHTML = `<p class="text-muted mb-0">${t('students.not_found')}</p>`;
+                new bootstrap.Modal(document.getElementById('assignModal')).show();
+                return;
+            }
+
+            // Группируем студентов по группе
+            const groups = {};
+            students.forEach(s => {
+                const g = s.group_name || t('amodal.no_group');
+                (groups[g] = groups[g] || []).push(s);
+            });
+
+            let html = `
+                <div class="form-check border-bottom pb-2 mb-2">
+                    <input class="form-check-input" type="checkbox" id="assignSelectAll" onchange="toggleAllAssign(this)">
+                    <label class="form-check-label fw-bold" for="assignSelectAll">${t('amodal.select_all')}</label>
+                </div>`;
+
+            Object.keys(groups).sort().forEach((g, gi) => {
+                html += `
+                    <div class="mb-2">
+                        <div class="form-check">
+                            <input class="form-check-input assign-group-toggle" type="checkbox"
+                                   id="assignGroup${gi}" data-group="${gi}" onchange="toggleGroupAssign(this)">
+                            <label class="form-check-label fw-semibold text-primary" for="assignGroup${gi}">
+                                <i class="bi bi-people me-1"></i>${g} (${groups[g].length})
+                            </label>
+                        </div>
+                        <div class="ms-4">
+                            ${groups[g].map(s => `
+                                <div class="form-check">
+                                    <input class="form-check-input assign-student" type="checkbox" value="${s.id}"
+                                           id="student-${s.id}" name="userIds" data-group="${gi}" onchange="syncGroupToggle(${gi})">
+                                    <label class="form-check-label" for="student-${s.id}">
+                                        ${s.full_name}${s.age != null ? ' (' + s.age + ' ' + t('unit.years') + ')' : ''}
+                                    </label>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>`;
+            });
+
+            list.innerHTML = html;
             new bootstrap.Modal(document.getElementById('assignModal')).show();
+        }
+
+        function toggleAllAssign(master) {
+            document.querySelectorAll('#assignStudentsList .assign-student, #assignStudentsList .assign-group-toggle')
+                .forEach(cb => cb.checked = master.checked);
+        }
+
+        function toggleGroupAssign(groupCb) {
+            const g = groupCb.dataset.group;
+            document.querySelectorAll(`#assignStudentsList .assign-student[data-group="${g}"]`)
+                .forEach(cb => cb.checked = groupCb.checked);
+        }
+
+        // Синхронизирует чекбокс группы при ручном выборе её студентов
+        function syncGroupToggle(gi) {
+            const studentCbs = document.querySelectorAll(`#assignStudentsList .assign-student[data-group="${gi}"]`);
+            const groupCb = document.getElementById('assignGroup' + gi);
+            if (!groupCb) return;
+            groupCb.checked = studentCbs.length > 0 && [...studentCbs].every(cb => cb.checked);
         }
 
         document.getElementById('assignForm').addEventListener('submit', async function (e) {
