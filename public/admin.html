@@ -274,14 +274,14 @@
                     </div>
                     <div class="col-6 col-lg-3">
                         <div class="stat-card stat-card-warning">
-                            <div class="stat-icon"><i class="bi bi-graph-up-arrow"></i></div>
-                            <div class="stat-info"><h3 id="resAvg">0</h3><p data-i18n="res.avg_score">Средний балл</p></div>
+                            <div class="stat-icon"><i class="bi bi-journal-text"></i></div>
+                            <div class="stat-info"><h3 id="resTests">0</h3><p data-i18n="res.tests">Тестов</p></div>
                         </div>
                     </div>
                     <div class="col-6 col-lg-3">
                         <div class="stat-card stat-card-danger">
-                            <div class="stat-icon"><i class="bi bi-exclamation-triangle-fill"></i></div>
-                            <div class="stat-info"><h3 id="resHigh">0</h3><p data-i18n="res.high_level">Высокий уровень</p></div>
+                            <div class="stat-icon"><i class="bi bi-graph-up-arrow"></i></div>
+                            <div class="stat-info"><h3 id="resAvg">0</h3><p data-i18n="res.avg_score">Средний балл</p></div>
                         </div>
                     </div>
                 </div>
@@ -1360,40 +1360,74 @@
         let resLevelsChart = null;
         let resTestsChart = null;
 
+        function shortText(s, n) {
+            s = String(s == null ? '' : s);
+            return s.length > n ? s.slice(0, n - 1) + '…' : s;
+        }
+
+        const methFor = (r) => (window.findMethodologyByTitle ? window.findMethodologyByTitle(r.questionnaire_title) : null);
+
+        // Инфографика строится ПОЛНОСТЬЮ из данных методик (methodologies.js),
+        // без предположений о числе/названиях уровней — масштабируется на любые методики.
         function renderResultsInfographics(results) {
             const arr = Array.isArray(results) ? results : [];
 
             const total = arr.length;
             const students = new Set(arr.map(r => r.user_id)).size;
+            const testTitles = new Set(arr.map(r => r.questionnaire_title).filter(Boolean));
             const scores = arr.map(r => parseFloat(r.score)).filter(n => !isNaN(n));
             const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
 
-            // Уровни по методикам (сопоставление по названию теста)
-            const lvl = { low: 0, medium: 0, high: 0, none: 0 };
-            arr.forEach(r => {
-                const i = interpForResult(r);
-                if (i && i.level) lvl[i.level] = (lvl[i.level] || 0) + 1;
-                else lvl.none++;
-            });
-
             document.getElementById('resTotal').textContent = total;
             document.getElementById('resStudents').textContent = students;
+            document.getElementById('resTests').textContent = testTitles.size;
             document.getElementById('resAvg').textContent = scores.length ? avg.toFixed(1) : '—';
-            document.getElementById('resHigh').textContent = lvl.high;
 
             if (!window.Chart) return;
 
-            // Доунат: распределение по уровням
+            // --- Доунат: распределение по уровням интерпретации ---
+            // Если в выборке несколько методик — к подписи добавляем название теста,
+            // чтобы одинаковые названия уровней из разных методик не смешивались.
+            const methTitles = new Set();
+            arr.forEach(r => { const m = methFor(r); if (m) methTitles.add(m.title); });
+            const multiMeth = methTitles.size > 1;
+
+            // Цвета: приоритет — заданный в методике range.color; затем семантика
+            // для типовых уровней; затем палитра по кругу (для любых нестандартных уровней).
+            const SEMANTIC = { low: '#06d6a0', medium: '#ffd166', high: '#ef476f' };
+            const PALETTE = ['#4361ee', '#06d6a0', '#ffd166', '#ef476f', '#118ab2', '#9b5de5', '#f15bb5', '#00bbf9', '#fb8500'];
+            let paletteIdx = 0;
+            const buckets = new Map(); // label -> { count, color }
+
+            arr.forEach(r => {
+                const m = methFor(r);
+                const range = m ? window.interpretMethodology(m, r.score) : null;
+                let label, color;
+                if (range) {
+                    label = multiMeth ? `${shortText(m.title, 22)}: ${range.label}` : range.label;
+                    color = range.color || SEMANTIC[range.level];
+                } else {
+                    label = t('level.none');
+                    color = '#adb5bd';
+                }
+                if (!buckets.has(label)) {
+                    if (!color) color = PALETTE[paletteIdx++ % PALETTE.length];
+                    buckets.set(label, { count: 0, color });
+                }
+                buckets.get(label).count++;
+            });
+
+            const levelLabels = [...buckets.keys()];
             const ctxL = document.getElementById('resLevelsChart');
             if (ctxL) {
                 if (resLevelsChart) resLevelsChart.destroy();
                 resLevelsChart = new Chart(ctxL, {
                     type: 'doughnut',
                     data: {
-                        labels: [t('level.low'), t('level.medium'), t('level.high'), t('level.none')],
+                        labels: levelLabels,
                         datasets: [{
-                            data: [lvl.low, lvl.medium, lvl.high, lvl.none],
-                            backgroundColor: ['#06d6a0', '#ffd166', '#ef476f', '#adb5bd'],
+                            data: levelLabels.map(k => buckets.get(k).count),
+                            backgroundColor: levelLabels.map(k => buckets.get(k).color),
                             borderWidth: 2,
                             borderColor: '#fff'
                         }]
@@ -1402,7 +1436,7 @@
                 });
             }
 
-            // Горизонтальный бар: средний балл по тестам
+            // --- Горизонтальный бар: средний балл по тестам ---
             const byTest = {};
             arr.forEach(r => {
                 const s = parseFloat(r.score);
@@ -1411,11 +1445,7 @@
                 (byTest[key] = byTest[key] || []).push(s);
             });
             const testNames = Object.keys(byTest);
-            const testAvgs = testNames.map(k => {
-                const v = byTest[k];
-                return +(v.reduce((a, b) => a + b, 0) / v.length).toFixed(1);
-            });
-            const shortNames = testNames.map(n => n.length > 40 ? n.slice(0, 38) + '…' : n);
+            const testAvgs = testNames.map(k => +(byTest[k].reduce((a, b) => a + b, 0) / byTest[k].length).toFixed(1));
 
             const ctxT = document.getElementById('resTestsChart');
             if (ctxT) {
@@ -1423,7 +1453,7 @@
                 resTestsChart = new Chart(ctxT, {
                     type: 'bar',
                     data: {
-                        labels: shortNames,
+                        labels: testNames.map(n => shortText(n, 40)),
                         datasets: [{
                             label: t('res.avg_score'),
                             data: testAvgs,
