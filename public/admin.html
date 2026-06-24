@@ -257,6 +257,55 @@
                 </div>
             </div>
 
+            <!-- Инфографика результатов -->
+            <div id="resultsInfographics">
+                <div class="row g-3 mb-4">
+                    <div class="col-6 col-lg-3">
+                        <div class="stat-card stat-card-primary">
+                            <div class="stat-icon"><i class="bi bi-clipboard2-check"></i></div>
+                            <div class="stat-info"><h3 id="resTotal">0</h3><p data-i18n="res.total">Прохождений</p></div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-lg-3">
+                        <div class="stat-card stat-card-success">
+                            <div class="stat-icon"><i class="bi bi-people-fill"></i></div>
+                            <div class="stat-info"><h3 id="resStudents">0</h3><p data-i18n="res.students">Студентов</p></div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-lg-3">
+                        <div class="stat-card stat-card-warning">
+                            <div class="stat-icon"><i class="bi bi-graph-up-arrow"></i></div>
+                            <div class="stat-info"><h3 id="resAvg">0</h3><p data-i18n="res.avg_score">Средний балл</p></div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-lg-3">
+                        <div class="stat-card stat-card-danger">
+                            <div class="stat-icon"><i class="bi bi-exclamation-triangle-fill"></i></div>
+                            <div class="stat-info"><h3 id="resHigh">0</h3><p data-i18n="res.high_level">Высокий уровень</p></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-4 mb-4">
+                    <div class="col-lg-5">
+                        <div class="card h-100">
+                            <div class="card-header bg-white">
+                                <h6 class="mb-0"><i class="bi bi-pie-chart me-2"></i><span data-i18n="res.chart_levels">Распределение по уровням</span></h6>
+                            </div>
+                            <div class="card-body"><div style="position:relative;height:280px;"><canvas id="resLevelsChart"></canvas></div></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-7">
+                        <div class="card h-100">
+                            <div class="card-header bg-white">
+                                <h6 class="mb-0"><i class="bi bi-bar-chart me-2"></i><span data-i18n="res.chart_tests">Средний балл по тестам</span></h6>
+                            </div>
+                            <div class="card-body"><div style="position:relative;height:280px;"><canvas id="resTestsChart"></canvas></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Таблица результатов -->
             <div class="card">
                 <div class="card-body p-0">
@@ -487,6 +536,7 @@
             loadDashboardStats();
             loadStudents();
             loadTests();
+            loadResults();
         };
 
         function showSection(sectionName) {
@@ -1274,6 +1324,8 @@
                 const resultsRaw = await res.json();
                 const results = Array.isArray(resultsRaw) ? resultsRaw : (resultsRaw?.data || []);
 
+                renderResultsInfographics(results);
+
                 const tbody = document.getElementById('resultsTableBody');
                 if (results.length === 0) {
                     tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">${t('results.not_found')}</td></tr>`;
@@ -1303,6 +1355,91 @@
                     </tr>
                 `).join('');
             } catch (e) { console.error(e); }
+        }
+
+        let resLevelsChart = null;
+        let resTestsChart = null;
+
+        function renderResultsInfographics(results) {
+            const arr = Array.isArray(results) ? results : [];
+
+            const total = arr.length;
+            const students = new Set(arr.map(r => r.user_id)).size;
+            const scores = arr.map(r => parseFloat(r.score)).filter(n => !isNaN(n));
+            const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+
+            // Уровни по методикам (сопоставление по названию теста)
+            const lvl = { low: 0, medium: 0, high: 0, none: 0 };
+            arr.forEach(r => {
+                const i = interpForResult(r);
+                if (i && i.level) lvl[i.level] = (lvl[i.level] || 0) + 1;
+                else lvl.none++;
+            });
+
+            document.getElementById('resTotal').textContent = total;
+            document.getElementById('resStudents').textContent = students;
+            document.getElementById('resAvg').textContent = scores.length ? avg.toFixed(1) : '—';
+            document.getElementById('resHigh').textContent = lvl.high;
+
+            if (!window.Chart) return;
+
+            // Доунат: распределение по уровням
+            const ctxL = document.getElementById('resLevelsChart');
+            if (ctxL) {
+                if (resLevelsChart) resLevelsChart.destroy();
+                resLevelsChart = new Chart(ctxL, {
+                    type: 'doughnut',
+                    data: {
+                        labels: [t('level.low'), t('level.medium'), t('level.high'), t('level.none')],
+                        datasets: [{
+                            data: [lvl.low, lvl.medium, lvl.high, lvl.none],
+                            backgroundColor: ['#06d6a0', '#ffd166', '#ef476f', '#adb5bd'],
+                            borderWidth: 2,
+                            borderColor: '#fff'
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+                });
+            }
+
+            // Горизонтальный бар: средний балл по тестам
+            const byTest = {};
+            arr.forEach(r => {
+                const s = parseFloat(r.score);
+                if (isNaN(s)) return;
+                const key = r.questionnaire_title || '—';
+                (byTest[key] = byTest[key] || []).push(s);
+            });
+            const testNames = Object.keys(byTest);
+            const testAvgs = testNames.map(k => {
+                const v = byTest[k];
+                return +(v.reduce((a, b) => a + b, 0) / v.length).toFixed(1);
+            });
+            const shortNames = testNames.map(n => n.length > 40 ? n.slice(0, 38) + '…' : n);
+
+            const ctxT = document.getElementById('resTestsChart');
+            if (ctxT) {
+                if (resTestsChart) resTestsChart.destroy();
+                resTestsChart = new Chart(ctxT, {
+                    type: 'bar',
+                    data: {
+                        labels: shortNames,
+                        datasets: [{
+                            label: t('res.avg_score'),
+                            data: testAvgs,
+                            backgroundColor: '#4361ee',
+                            borderRadius: 6
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+                    }
+                });
+            }
         }
 
         function getScoreBadge(score) {
