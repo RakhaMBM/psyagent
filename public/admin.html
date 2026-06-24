@@ -40,11 +40,6 @@
                             <i class="bi bi-graph-up me-1"></i><span data-i18n="nav.results">Результаты</span>
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="showSection('consents')">
-                            <i class="bi bi-file-earmark-check me-1"></i><span data-i18n="nav.consents">Согласия</span>
-                        </a>
-                    </li>
                 </ul>
                 <div class="d-flex align-items-center gap-2">
                     <button class="btn btn-light btn-sm" type="button" onclick="toggleLang()" title="Тіл / Язык">
@@ -74,7 +69,7 @@
             <h4 class="mb-4"><i class="bi bi-speedometer2 me-2"></i><span data-i18n="dash.overview">Обзор системы</span></h4>
 
             <div class="row g-4 mb-4">
-                <div class="col-md-3">
+                <div class="col-md-4">
                     <div class="stat-card stat-card-primary">
                         <div class="stat-icon"><i class="bi bi-people-fill"></i></div>
                         <div class="stat-info">
@@ -83,7 +78,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-4">
                     <div class="stat-card stat-card-success">
                         <div class="stat-icon"><i class="bi bi-journal-check"></i></div>
                         <div class="stat-info">
@@ -92,7 +87,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-4">
                     <div class="stat-card stat-card-warning">
                         <div class="stat-icon"><i class="bi bi-hourglass-split"></i></div>
                         <div class="stat-info">
@@ -101,39 +96,18 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="stat-card stat-card-danger">
-                        <div class="stat-icon"><i class="bi bi-shield-exclamation"></i></div>
-                        <div class="stat-info">
-                            <h3 id="pendingConsents">0</h3>
-                            <p data-i18n="dash.no_consent">Нет согласия</p>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <!-- Графики -->
             <div class="row g-4 mb-4">
-                <div class="col-lg-8">
+                <div class="col-12">
                     <div class="card h-100">
                         <div class="card-header bg-white">
                             <h6 class="mb-0"><i class="bi bi-bar-chart-line me-2"></i><span data-i18n="dash.chart_groups">Прохождение тестов по группам</span></h6>
                         </div>
                         <div class="card-body">
-                            <div style="position:relative;height:300px;">
+                            <div style="position:relative;height:320px;">
                                 <canvas id="groupsChart"></canvas>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-lg-4">
-                    <div class="card h-100">
-                        <div class="card-header bg-white">
-                            <h6 class="mb-0"><i class="bi bi-pie-chart me-2"></i><span data-i18n="dash.chart_consent">Статус согласий</span></h6>
-                        </div>
-                        <div class="card-body">
-                            <div style="position:relative;height:300px;">
-                                <canvas id="consentChart"></canvas>
                             </div>
                         </div>
                     </div>
@@ -219,12 +193,11 @@
                                     <th data-i18n="table.age">Возраст</th>
                                     <th data-i18n="table.group">Группа</th>
                                     <th data-i18n="table.school">Школа</th>
-                                    <th data-i18n="table.consent">Согласие</th>
                                     <th data-i18n="common.actions">Действия</th>
                                 </tr>
                             </thead>
                             <tbody id="studentsTableBody">
-                                <tr><td colspan="7" class="text-center py-4" data-i18n="common.loading">Загрузка...</td></tr>
+                                <tr><td colspan="6" class="text-center py-4" data-i18n="common.loading">Загрузка...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -307,38 +280,6 @@
             </div>
         </section>
 
-        <!-- Секция: Согласия -->
-        <section id="section-consents" class="p-4 d-none">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h4><i class="bi bi-file-earmark-check me-2"></i><span data-i18n="consents.title">Согласия родителей</span></h4>
-                <button class="btn btn-primary" onclick="openConsentModal()">
-                    <i class="bi bi-plus-lg me-1"></i><span data-i18n="consents.add">Добавить согласие</span>
-                </button>
-            </div>
-
-            <div class="card">
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead class="table-dark">
-                                <tr>
-                                    <th data-i18n="table.student">Студент</th>
-                                    <th data-i18n="table.age">Возраст</th>
-                                    <th data-i18n="table.parent">Родитель</th>
-                                    <th data-i18n="table.relation">Степень родства</th>
-                                    <th data-i18n="table.status">Статус</th>
-                                    <th data-i18n="table.date">Дата</th>
-                                    <th data-i18n="common.actions">Действия</th>
-                                </tr>
-                            </thead>
-                            <tbody id="consentsTableBody">
-                                <tr><td colspan="7" class="text-center py-4" data-i18n="common.loading">Загрузка...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </section>
     </main>
 
     <!-- Модальное окно: Студент -->
@@ -461,74 +402,6 @@
         </div>
     </div>
 
-    <!-- Модальное окно: Согласие -->
-    <div class="modal fade" id="consentModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header bg-warning">
-                    <h5 class="modal-title" data-i18n="cmodal.title">Регистрация согласия родителя</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form id="consentForm">
-                    <div class="modal-body">
-                        <div class="alert alert-info">
-                            <i class="bi bi-info-circle me-2"></i>
-                            <span data-i18n="cmodal.info">Эта форма используется для регистрации письменного согласия законного представителя на проведение психологической диагностики несовершеннолетнего студента.</span>
-                        </div>
-
-                        <div class="row g-3 mb-3">
-                            <div class="col-md-12">
-                                <label class="form-label fw-bold"><span data-i18n="cmodal.student">Студент</span> *</label>
-                                <select class="form-select" name="userId" id="consentStudentSelect" required>
-                                    <option value="" data-i18n="cmodal.choose_student">Выберите студента</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <h6 class="text-primary border-bottom pb-2 mb-3" data-i18n="cmodal.parent_data">Данные родителя (законного представителя)</h6>
-                        <div class="row g-3">
-                            <div class="col-md-8">
-                                <label class="form-label"><span data-i18n="cmodal.parent_fio">ФИО родителя</span> *</label>
-                                <input type="text" class="form-control" name="parentFullName" required>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label"><span data-i18n="table.relation">Степень родства</span> *</label>
-                                <select class="form-select" name="parentRelationship" required>
-                                    <option value="mother" data-i18n="rel.mother">Мать</option>
-                                    <option value="father" data-i18n="rel.father">Отец</option>
-                                    <option value="guardian" data-i18n="rel.guardian">Опекун</option>
-                                    <option value="other" data-i18n="rel.other">Другое</option>
-                                </select>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" data-i18n="cmodal.parent_phone">Телефон родителя</label>
-                                <input type="tel" class="form-control" name="parentPhone">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" data-i18n="cmodal.parent_email">Email родителя</label>
-                                <input type="email" class="form-control" name="parentEmail">
-                            </div>
-                        </div>
-
-                        <h6 class="text-primary border-bottom pb-2 mb-3 mt-4" data-i18n="cmodal.consent_text">Текст согласия</h6>
-                        <div class="mb-3">
-                            <textarea class="form-control" name="consentText" rows="6" required>Я, нижеподписавшийся, даю согласие на проведение психологической диагностики моего ребёнка, а также на психолого-педагогическое сопровождение, обработку и хранение персональных данных в соответствии с законодательством РК</textarea>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label" data-i18n="cmodal.signature">Скан подписи (PDF, JPG, PNG)</label>
-                            <input type="file" class="form-control" name="signature" accept=".pdf,.jpg,.jpeg,.png">
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Отмена</button>
-                        <button type="submit" class="btn btn-warning" data-i18n="cmodal.submit">Зарегистрировать согласие</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
     <!-- Модальное окно: Просмотр результата -->
     <div class="modal fade" id="resultModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
@@ -588,13 +461,11 @@
         document.getElementById('adminName').textContent = currentUser.fullName;
 
         let groupsChart = null;
-        let consentChart = null;
 
         loadDashboardStats();
         loadGroupsForFilters();
         loadStudents();
         loadTests();
-        loadConsents();
         loadTestsForFilter();
 
         // Перерисовка динамических частей при смене языка
@@ -602,7 +473,6 @@
             loadDashboardStats();
             loadStudents();
             loadTests();
-            loadConsents();
         };
 
         function showSection(sectionName) {
@@ -618,19 +488,16 @@
 
         async function loadDashboardStats() {
             try {
-                const [studentsRes, groupsRes, consentsRes] = await Promise.all([
+                const [studentsRes, groupsRes] = await Promise.all([
                     fetch('/api/students', { headers: { 'Authorization': `Bearer ${token}` }}),
-                    fetch('/api/statistics/groups', { headers: { 'Authorization': `Bearer ${token}` }}),
-                    fetch('/api/consents', { headers: { 'Authorization': `Bearer ${token}` }})
+                    fetch('/api/statistics/groups', { headers: { 'Authorization': `Bearer ${token}` }})
                 ]);
 
                 const studentsRaw = await studentsRes.json();
                 const groupsRaw = await groupsRes.json();
-                const consentsRaw = await consentsRes.json();
 
                 const students = Array.isArray(studentsRaw) ? studentsRaw : (studentsRaw?.data || []);
                 const groups = Array.isArray(groupsRaw) ? groupsRaw : (groupsRaw?.data || []);
-                const consents = Array.isArray(consentsRaw) ? consentsRaw : (consentsRaw?.data || []);
 
                 document.getElementById('totalStudents').textContent = students.length;
 
@@ -638,9 +505,6 @@
                 groups.forEach(g => { completed += parseInt(g.completed_tests) || 0; });
                 document.getElementById('completedTests').textContent = completed;
                 document.getElementById('pendingTests').textContent = Math.max(0, students.length - completed);
-
-                const noConsent = students.filter(s => s.age != null && s.age < 18 && s.consent_status !== 'confirmed').length;
-                document.getElementById('pendingConsents').textContent = noConsent;
 
                 const tbody = document.getElementById('groupsTableBody');
                 if (groups.length === 0) {
@@ -680,29 +544,6 @@
                     }
                 });
             }
-
-            // Доунат: статус согласий
-            const minors = students.filter(s => s.age != null && s.age < 18);
-            const confirmed = minors.filter(s => s.consent_status === 'confirmed').length;
-            const pending = minors.filter(s => s.consent_status === 'pending').length;
-            const none = minors.length - confirmed - pending;
-            const adults = students.filter(s => s.age != null && s.age >= 18).length;
-
-            const ctx2 = document.getElementById('consentChart');
-            if (ctx2 && window.Chart) {
-                if (consentChart) consentChart.destroy();
-                consentChart = new Chart(ctx2, {
-                    type: 'doughnut',
-                    data: {
-                        labels: [t('badge.confirmed'), t('badge.pending'), t('badge.not_received'), t('badge.not_required')],
-                        datasets: [{
-                            data: [confirmed, pending, none, adults],
-                            backgroundColor: ['#06d6a0', '#ffd166', '#ef476f', '#adb5bd']
-                        }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
-                });
-            }
         }
 
         async function loadStudents() {
@@ -722,7 +563,7 @@
 
                 const tbody = document.getElementById('studentsTableBody');
                 if (students.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-muted">${t('students.not_found')}</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">${t('students.not_found')}</td></tr>`;
                     return;
                 }
 
@@ -733,7 +574,6 @@
                         <td>${s.age != null ? s.age + ' ' + t('unit.years') : '-'}</td>
                         <td>${s.group_name || '-'}</td>
                         <td>${s.school || '-'}</td>
-                        <td>${getConsentBadge(s.consent_status, s.age)}</td>
                         <td>
                             <div class="btn-group btn-group-sm">
                                 <button class="btn btn-outline-primary" onclick="editStudent(${s.id})" title="${t('common.edit')}">
@@ -747,14 +587,6 @@
                     </tr>
                 `).join('');
             } catch (e) { console.error(e); }
-        }
-
-        function getConsentBadge(status, age) {
-            if (age >= 18) return `<span class="badge bg-secondary">${t('badge.not_required')}</span>`;
-            if (!status) return `<span class="badge bg-danger">${t('badge.not_received')}</span>`;
-            if (status === 'confirmed') return `<span class="badge bg-success">${t('badge.confirmed')}</span>`;
-            if (status === 'pending') return `<span class="badge bg-warning text-dark">${t('badge.pending')}</span>`;
-            return `<span class="badge bg-secondary">${status}</span>`;
         }
 
         let editingStudentId = null;
@@ -1371,101 +1203,6 @@
             } catch (e) {
                 alert(t('msg.export_error'));
             }
-        }
-
-        async function loadConsents() {
-            try {
-                const res = await fetch('/api/consents', { headers: { 'Authorization': `Bearer ${token}` }});
-                const consentsRaw = await res.json();
-                const consents = Array.isArray(consentsRaw) ? consentsRaw : (consentsRaw?.data || []);
-
-                const tbody = document.getElementById('consentsTableBody');
-                if (consents.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-muted">${t('consents.empty')}</td></tr>`;
-                } else {
-                    tbody.innerHTML = consents.map(c => {
-                        const age = c.birth_date ? Math.floor((new Date() - new Date(c.birth_date)) / (365.25 * 24 * 60 * 60 * 1000)) : '?';
-                        return `
-                            <tr>
-                                <td class="fw-semibold">${c.student_name}</td>
-                                <td>${age} ${t('unit.years')}</td>
-                                <td>${c.parent_full_name}</td>
-                                <td>${getRelationLabel(c.parent_relationship)}</td>
-                                <td>${getConsentStatusLabel(c.signature_status)}</td>
-                                <td>${formatDate(c.consent_date)}</td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-warning" onclick="updateConsentStatus(${c.id})">
-                                        <i class="bi bi-pencil"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                        `;
-                    }).join('');
-                }
-
-                const select = document.getElementById('consentStudentSelect');
-                const uniqueStudents = [...new Map(consents.map(c => [c.user_id, c])).values()];
-                select.innerHTML = `<option value="">${t('cmodal.choose_student')}</option>` +
-                    uniqueStudents.map(c => `<option value="${c.user_id}">${c.student_name}</option>`).join('');
-            } catch (e) { console.error(e); }
-        }
-
-        function getRelationLabel(rel) {
-            const map = { mother: 'rel.mother', father: 'rel.father', guardian: 'rel.guardian', other: 'rel.other' };
-            return map[rel] ? t(map[rel]) : rel;
-        }
-
-        function getConsentStatusLabel(status) {
-            const badges = {
-                pending: `<span class="badge bg-warning text-dark">${t('badge.pending')}</span>`,
-                confirmed: `<span class="badge bg-success">${t('badge.confirmed')}</span>`,
-                rejected: `<span class="badge bg-danger">${t('badge.rejected')}</span>`
-            };
-            return badges[status] || status;
-        }
-
-        function openConsentModal() {
-            new bootstrap.Modal(document.getElementById('consentModal')).show();
-        }
-
-        document.getElementById('consentForm').addEventListener('submit', async function (e) {
-            e.preventDefault();
-
-            const formData = new FormData(this);
-
-            try {
-                const res = await fetch('/api/consents', {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` },
-                    body: formData
-                });
-
-                if (!res.ok) throw new Error(await res.text());
-
-                bootstrap.Modal.getInstance(document.getElementById('consentModal')).hide();
-                loadConsents();
-                loadDashboardStats();
-                alert(t('msg.consent_registered'));
-            } catch (err) {
-                alert(t('msg.error') + ': ' + err.message);
-            }
-        });
-
-        function updateConsentStatus(consentId) {
-            const newStatus = prompt(t('msg.prompt_status'));
-            if (!newStatus) return;
-
-            fetch(`/api/consents/${consentId}`, {
-                method: 'PATCH',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ status: newStatus })
-            }).then(() => {
-                loadConsents();
-                loadDashboardStats();
-            });
         }
 
         async function loadGroupsForFilters() {

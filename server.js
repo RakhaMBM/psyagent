@@ -2,10 +2,8 @@ const express = require('express');
 const mysql2 = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,15 +14,6 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Настройка загрузки файлов (для сканов согласий)
-const storage = multer.diskStorage({
-    destination: './public/uploads/',
-    filename: (req, file, cb) => {
-        cb(null, `consent_${Date.now()}_${file.originalname}`);
-    }
-});
-const upload = multer({ storage });
 
 // Подключение к базе данных
 const pool = mysql2.createPool({
@@ -78,56 +67,6 @@ function requireAdmin(req, res, next) {
         return res.status(403).json({ error: 'Доступ запрещён. Требуются права администратора.' });
     }
     next();
-}
-
-// Middleware проверки возраста и согласия
-async function checkAgeConsent(req, res, next) {
-    try {
-        const [users] = await pool.execute(
-            'SELECT birth_date FROM users WHERE id = ?',
-            [req.user.id]
-        );
-        
-        if (users.length === 0) {
-            return res.status(404).json({ error: 'Пользователь не найден' });
-        }
-        
-        const birthDate = new Date(users[0].birth_date);
-        const today = new Date();
-        let age = today.getFullYear() - birthDate.getFullYear();
-        const monthDiff = today.getMonth() - birthDate.getMonth();
-        
-        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-            age--;
-        }
-        
-        req.user.age = age;
-        req.user.isAdult = age >= 18;
-        
-        // Если совершеннолетний - пропускаем
-        if (req.user.isAdult) {
-            return next();
-        }
-        
-        // Если несовершеннолетний - проверяем согласие
-        const [consents] = await pool.execute(
-            'SELECT signature_status FROM parental_consents WHERE user_id = ?',
-            [req.user.id]
-        );
-        
-        if (consents.length === 0 || consents[0].signature_status !== 'confirmed') {
-            return res.status(403).json({ 
-                error: 'CONSENT_REQUIRED',
-                message: 'Требуется согласие родителя для прохождения диагностики',
-                hasConsent: consents.length > 0 ? consents[0].signature_status : null
-            });
-        }
-        
-        next();
-    } catch (error) {
-        console.error('Ошибка проверки возраста:', error);
-        res.status(500).json({ error: 'Ошибка сервера' });
-    }
 }
 
 // Логирование действий
@@ -220,21 +159,10 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
             }
         }
         
-        // Проверяем статус согласия для несовершеннолетних
-        let consentStatus = null;
-        if (age !== null && age < 18) {
-            const [consents] = await pool.execute(
-                'SELECT signature_status FROM parental_consents WHERE user_id = ?',
-                [user.id]
-            );
-            consentStatus = consents.length > 0 ? consents[0].signature_status : null;
-        }
-        
         res.json({
             ...user,
             age,
-            isAdult: age === null || age >= 18,
-            consentStatus
+            isAdult: age === null || age >= 18
         });
     } catch (error) {
         console.error('Ошибка получения пользователя:', error);
@@ -251,13 +179,11 @@ app.get('/api/students', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { group, search } = req.query;
         let query = `
-            SELECT u.id, u.username, u.full_name, u.birth_date, u.group_name, 
+            SELECT u.id, u.username, u.full_name, u.birth_date, u.group_name,
                    u.email, u.phone, u.created_at,
-                   sp.family_type, sp.lives_with, sp.school, sp.home_address,
-                   pc.signature_status as consent_status
+                   sp.family_type, sp.lives_with, sp.school, sp.home_address
             FROM users u
             LEFT JOIN student_profiles sp ON u.id = sp.user_id
-            LEFT JOIN parental_consents pc ON u.id = pc.user_id
             WHERE u.role = 'student' AND u.is_active = TRUE
         `;
         const params = [];
@@ -634,7 +560,7 @@ app.get('/api/questionnaires/:id', authenticateToken, async (req, res) => {
 });
 
 // Получение доступных тестов для студента
-app.get('/api/my-tests', authenticateToken, checkAgeConsent, async (req, res) => {
+app.get('/api/my-tests', authenticateToken, async (req, res) => {
     try {
         const [assignments] = await pool.execute(`
             SELECT a.id as assignment_id, a.status as assignment_status, a.due_date,
@@ -688,7 +614,7 @@ app.post('/api/assign-test', authenticateToken, requireAdmin, async (req, res) =
 // ============================================
 
 // Начало прохождения теста
-app.post('/api/results/start', authenticateToken, checkAgeConsent, async (req, res) => {
+app.post('/api/results/start', authenticateToken, async (req, res) => {
     try {
         const { questionnaireId } = req.body;
         
@@ -724,7 +650,7 @@ app.post('/api/results/start', authenticateToken, checkAgeConsent, async (req, r
 });
 
 // Сохранение ответов
-app.post('/api/results/save', authenticateToken, checkAgeConsent, async (req, res) => {
+app.post('/api/results/save', authenticateToken, async (req, res) => {
     try {
         const { resultId, answers } = req.body;
         
@@ -751,7 +677,7 @@ app.post('/api/results/save', authenticateToken, checkAgeConsent, async (req, re
 });
 
 // Завершение теста
-app.post('/api/results/complete', authenticateToken, checkAgeConsent, async (req, res) => {
+app.post('/api/results/complete', authenticateToken, async (req, res) => {
     try {
         const { resultId, answers } = req.body;
         
@@ -906,112 +832,6 @@ app.get('/api/export/json', authenticateToken, requireAdmin, async (req, res) =>
     } catch (error) {
         console.error('Ошибка экспорта:', error);
         res.status(500).json({ error: 'Ошибка экспорта' });
-    }
-});
-
-// ============================================
-// API РОУТЫ - СОГЛАСИЯ РОДИТЕЛЕЙ
-// ============================================
-
-// Получение списка согласий (для админа)
-app.get('/api/consents', authenticateToken, requireAdmin, async (req, res) => {
-    try {
-        const [consents] = await pool.execute(`
-            SELECT pc.*, u.full_name as student_name, u.birth_date, u.group_name,
-            admin.full_name as created_by_name
-            FROM parental_consents pc
-            JOIN users u ON pc.user_id = u.id
-            JOIN users admin ON pc.created_by = admin.id
-            ORDER BY pc.created_at DESC
-        `);
-        
-        res.json(consents);
-    } catch (error) {
-        console.error('Ошибка согласий:', error);
-        res.status(500).json({ error: 'Ошибка загрузки' });
-    }
-});
-
-// Создание формы согласия (только админ)
-app.post('/api/consents', authenticateToken, requireAdmin, upload.single('signature'), async (req, res) => {
-    try {
-        const { userId, parentFullName, parentRelationship, parentPhone, parentEmail, consentText } = req.body;
-        
-        // Проверяем возраст студента
-        const [students] = await pool.execute(
-            'SELECT birth_date FROM users WHERE id = ?',
-            [userId]
-        );
-        
-        if (students.length === 0) {
-            return res.status(404).json({ error: 'Студент не найден' });
-        }
-        
-        const birthDate = new Date(students[0].birth_date);
-        const age = Math.floor((new Date() - birthDate) / (365.25 * 24 * 60 * 60 * 1000));
-        
-        if (age >= 18) {
-            return res.status(400).json({ error: 'Студент совершеннолетний, согласие не требуется' });
-        }
-        
-        const signaturePath = req.file ? `/uploads/${req.file.filename}` : null;
-        
-        await pool.execute(
-            `INSERT INTO parental_consents 
-             (user_id, parent_full_name, parent_relationship, parent_phone, parent_email, 
-              consent_text, consent_date, signature_status, signature_image_path, created_by)
-             VALUES (?, ?, ?, ?, ?, ?, CURDATE(), 'confirmed', ?, ?)`,
-            [userId, parentFullName, parentRelationship, parentPhone, parentEmail, 
-             consentText, signaturePath, req.user.id]
-        );
-        
-        await logAction(req.user.id, 'CREATE_CONSENT', 'consent', parseInt(userId), { status: 'confirmed' });
-        
-        res.status(201).json({ message: 'Согласие зарегистрировано' });
-    } catch (error) {
-        console.error('Ошибка согласия:', error);
-        res.status(500).json({ error: 'Ошибка регистрации согласия' });
-    }
-});
-
-// Обновление статуса согласия
-app.patch('/api/consents/:id', authenticateToken, requireAdmin, async (req, res) => {
-    try {
-        const { status, notes } = req.body;
-        
-        await pool.execute(
-            `UPDATE parental_consents SET signature_status = ?, notes = ?, updated_at = NOW()
-             WHERE id = ?`,
-            [status, notes, req.params.id]
-        );
-        
-        await logAction(req.user.id, 'UPDATE_CONSENT', 'consent', parseInt(req.params.id), { status });
-        
-        res.json({ message: 'Статус обновлён' });
-    } catch (error) {
-        console.error('Ошибка обновления:', error);
-        res.status(500).json({ error: 'Ошибка обновления' });
-    }
-});
-
-// Получение своего статуса согласия (для студента)
-app.get('/api/my-consent', authenticateToken, async (req, res) => {
-    try {
-        const [consents] = await pool.execute(
-            'SELECT * FROM parental_consents WHERE user_id = ?',
-            [req.user.id]
-        );
-        
-        if (consents.length === 0) {
-            return res.json({ exists: false });
-        }
-        
-        // Не показываем чувствительные данные студенту
-        const { signature_image_path, ...safeData } = consents[0];
-        res.json({ exists: true, ...safeData });
-    } catch (error) {
-        console.error('Ошибка согласия:', error);
-        res.status(500).json({ error: 'Ошибка загрузки' });
     }
 });
 
