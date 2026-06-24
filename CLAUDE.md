@@ -17,6 +17,10 @@
 - `public/i18n.js` — двуязычие RU/KZ. Текст тегается `data-i18n` / `data-i18n-ph` / `data-i18n-html`,
   динамика — через глобальную `t('ключ')`. Кнопка-переключатель вызывает `toggleLang()`;
   страница может определить `window.onLangChange` для перерисовки динамических частей.
+- `public/methodologies.js` — справочник готовых психодиагностических методик (`window.PSY_METHODOLOGIES`)
+  и хелперы (`findMethodologyByTitle`, `interpretMethodology`, `hasWeightedOptions`). Чтобы добавить
+  методику — просто допишите объект в массив (вопросы, варианты с весами `{text,score}`, диапазоны
+  интерпретации). Выбор методики — в модалке создания теста (страница «Тесты»).
 
 ## Возможности (фронтенд)
 - Импорт студентов из Excel (страница «Студенты»): парсинг через SheetJS на клиенте →
@@ -48,7 +52,10 @@ npm start            # node server.js, порт 3000
 - `student_profiles` — семья и быт студента: `family_type`, `lives_with`,
   `school`, `home_address`, `psychologist_notes`. Связь 1:1 с `users`.
 - `questionnaires` + `questions` — опросники и вопросы (типы: single/multiple/scale/text).
+  Для методик варианты ответа хранятся как объекты `{text, score}` в `options` (вес варианта).
 - `results` — прохождения (JSON-ответы + score). `assignments` — назначения тестов.
+  Подсчёт балла на сервере (`/api/results/complete`): если у вопросов взвешенные варианты —
+  балл = строгая СУММА весов выбранных ответов (по формуле методики); иначе — среднее по шкалам.
 - `audit_log` — аудит действий.
 
 ## Особенности / на что смотреть

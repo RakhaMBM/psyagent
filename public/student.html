@@ -151,12 +151,14 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="methodologies.js"></script>
     <script src="i18n.js"></script>
     <script>
         let token = localStorage.getItem('token');
         let currentUser = JSON.parse(localStorage.getItem('user'));
         let currentResultId = null;
         let currentQuestionnaireId = null;
+        let currentMethodology = null;
 
         if (!token || currentUser?.role !== 'student') {
             window.location.href = '/';
@@ -320,6 +322,7 @@
 
         async function startTest(questionnaireId, title) {
             currentQuestionnaireId = questionnaireId;
+            currentMethodology = window.findMethodologyByTitle ? window.findMethodologyByTitle(title) : null;
             document.getElementById('testTitle').textContent = title;
 
             try {
@@ -353,7 +356,13 @@
 
             const container = document.getElementById('testQuestions');
 
-            container.innerHTML = questionsArray.map((q, idx) => {
+            const optLabel = (opt) => (opt && typeof opt === 'object') ? opt.text : opt;
+
+            const instructionHtml = (currentMethodology && currentMethodology.instruction)
+                ? `<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>${currentMethodology.instruction}</div>`
+                : '';
+
+            container.innerHTML = instructionHtml + questionsArray.map((q, idx) => {
                 let inputHtml = '';
 
                 switch (q.question_type) {
@@ -363,8 +372,8 @@
                                 ${(q.options || []).map((opt, i) => `
                                     <div class="form-check">
                                         <input class="form-check-input" type="radio"
-                                               name="q_${idx}" id="q${idx}_opt${i}" value="${opt}">
-                                        <label class="form-check-label" for="q${idx}_opt${i}">${opt}</label>
+                                               name="q_${idx}" id="q${idx}_opt${i}" value="${optLabel(opt)}">
+                                        <label class="form-check-label" for="q${idx}_opt${i}">${optLabel(opt)}</label>
                                     </div>
                                 `).join('')}
                             </div>
@@ -377,8 +386,8 @@
                                 ${(q.options || []).map((opt, i) => `
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox"
-                                               name="q_${idx}[]" id="q${idx}_opt${i}" value="${opt}">
-                                        <label class="form-check-label" for="q${idx}_opt${i}">${opt}</label>
+                                               name="q_${idx}[]" id="q${idx}_opt${i}" value="${optLabel(opt)}">
+                                        <label class="form-check-label" for="q${idx}_opt${i}">${optLabel(opt)}</label>
                                     </div>
                                 `).join('')}
                             </div>
@@ -506,7 +515,18 @@
                 bootstrap.Modal.getInstance(document.getElementById('testModal')).hide();
                 loadMyTests();
 
-                alert('✅ ' + t('msg.test_finished') + '\n\n' + t('msg.your_result') + ': ' + data.score + '\n\n' + t('msg.thanks'));
+                let scoreLine = String(data.score);
+                let interpLine = '';
+                if (currentMethodology) {
+                    scoreLine += ' / ' + currentMethodology.maxScore;
+                    const interp = window.interpretMethodology
+                        ? window.interpretMethodology(currentMethodology, data.score) : null;
+                    if (interp) interpLine = '\n' + t('rmodal.interpretation') + ': ' + interp.label;
+                }
+
+                alert('✅ ' + t('msg.test_finished') + '\n\n' +
+                      t('msg.your_result') + ': ' + scoreLine + interpLine + '\n\n' +
+                      t('msg.thanks'));
             } catch (e) {
                 alert(t('msg.error') + ': ' + e.message);
             }

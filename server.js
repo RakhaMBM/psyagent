@@ -705,24 +705,53 @@ app.post('/api/results/complete', authenticateToken, async (req, res) => {
         if (results.length === 0) {
             return res.status(404).json({ error: 'Результат не найден' });
         }
-        
-        // Вычисляем простой счёт (сумма шкальных значений)
-        let totalScore = 0;
-        let answeredCount = 0;
-        
-        Object.values(answers).forEach(answer => {
-            if (typeof answer === 'number') {
-                totalScore += answer;
-                answeredCount++;
-            }
-        });
-        
-        const avgScore = answeredCount > 0 ? (totalScore / answeredCount).toFixed(2) : 0;
-        
+
+        // Загружаем вопросы опросника, чтобы определить способ подсчёта
+        const [questionRows] = await pool.execute(
+            'SELECT options, order_index FROM questions WHERE questionnaire_id = ? ORDER BY order_index',
+            [results[0].questionnaire_id]
+        );
+        const questions = questionRows.map(q => ({
+            options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options
+        }));
+
+        // Методика со взвешенными вариантами: вариант ответа = { text, score }.
+        // Тогда балл = строгая СУММА весов выбранных вариантов (по формуле методики).
+        const isWeighted = questions.some(q =>
+            Array.isArray(q.options) &&
+            q.options.some(o => o && typeof o === 'object' && typeof o.score === 'number')
+        );
+
+        let finalScore;
+        if (isWeighted) {
+            let sum = 0;
+            questions.forEach((q, idx) => {
+                const answer = answers ? answers[idx] : undefined;
+                if (Array.isArray(q.options)) {
+                    const opt = q.options.find(o =>
+                        (o && typeof o === 'object' ? o.text : o) === answer
+                    );
+                    if (opt && typeof opt.score === 'number') sum += opt.score;
+                }
+            });
+            finalScore = sum;
+        } else {
+            // Прежняя логика: среднее по числовым ответам (шкалы)
+            let totalScore = 0;
+            let answeredCount = 0;
+            Object.values(answers || {}).forEach(answer => {
+                if (typeof answer === 'number') {
+                    totalScore += answer;
+                    answeredCount++;
+                }
+            });
+            finalScore = answeredCount > 0 ? Number((totalScore / answeredCount).toFixed(2)) : 0;
+        }
+
         await pool.execute(
             `UPDATE results SET answers = ?, score = ?, status = 'completed', completed_at = NOW()
              WHERE id = ?`,
-            [JSON.stringify(answers), avgScore, resultId]
+            [JSON.stringify(answers), finalScore, resultId]
         );
         
         // Обновляем статусы
@@ -732,9 +761,9 @@ app.post('/api/results/complete', authenticateToken, async (req, res) => {
             [req.user.id, results[0].questionnaire_id]
         );
         
-        await logAction(req.user.id, 'COMPLETE_TEST', 'result', resultId, { score: avgScore });
-        
-        res.json({ message: 'Тест завершён', score: parseFloat(avgScore) });
+        await logAction(req.user.id, 'COMPLETE_TEST', 'result', resultId, { score: finalScore });
+
+        res.json({ message: 'Тест завершён', score: finalScore });
     } catch (error) {
         console.error('Ошибка завершения:', error);
         res.status(500).json({ error: 'Ошибка завершения' });
