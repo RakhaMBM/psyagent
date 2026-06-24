@@ -840,6 +840,9 @@
                                     <button class="btn btn-sm btn-outline-primary" onclick="viewTest(${item.id})">
                                         <i class="bi bi-eye me-1"></i>${t('tests.view')}
                                     </button>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteTest(${item.id}, '${(item.title || '').replace(/'/g, "\\'")}')">
+                                        <i class="bi bi-trash me-1"></i>${t('common.delete')}
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -864,6 +867,23 @@
                 `;
                 new bootstrap.Modal(document.getElementById('resultModal')).show();
             } catch (e) { alert(t('msg.test_load_error')); }
+        }
+
+        async function deleteTest(id, title) {
+            if (!confirm(`${t('msg.confirm_delete_test')}${title ? '\n\n«' + title + '»' : ''}`)) return;
+            try {
+                const res = await fetch(`/api/questionnaires/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error(await res.text());
+                loadTests();
+                loadTestsForFilter();
+                loadDashboardStats();
+                alert(t('msg.test_deleted'));
+            } catch (e) {
+                alert(t('msg.error') + ': ' + e.message);
+            }
         }
 
         let questionCounter = 0;
@@ -1126,9 +1146,14 @@
                         <td><span class="badge ${getScoreBadge(r.score)}">${r.score}</span></td>
                         <td>${formatDateTime(r.completed_at)}</td>
                         <td>
-                            <button class="btn btn-sm btn-outline-info" onclick="viewResult(${r.id})">
-                                <i class="bi bi-eye"></i>
-                            </button>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-info" onclick="viewResult(${r.id})" title="${t('tests.view')}">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="deleteResult(${r.id})" title="${t('common.delete')}">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 `).join('');
@@ -1139,6 +1164,21 @@
             if (score >= 4) return 'bg-danger';
             if (score >= 3) return 'bg-warning text-dark';
             return 'bg-success';
+        }
+
+        async function deleteResult(id) {
+            if (!confirm(t('msg.confirm_delete_result'))) return;
+            try {
+                const res = await fetch(`/api/results/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error(await res.text());
+                loadResults();
+                loadDashboardStats();
+            } catch (e) {
+                alert(t('msg.error') + ': ' + e.message);
+            }
         }
 
         async function viewResult(resultId) {

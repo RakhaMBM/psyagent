@@ -559,6 +559,22 @@ app.get('/api/questionnaires/:id', authenticateToken, async (req, res) => {
     }
 });
 
+// Удаление опросника/теста (только админ).
+// Каскадно удаляет вопросы, назначения и результаты (FK ON DELETE CASCADE).
+app.delete('/api/questionnaires/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const [result] = await pool.execute('DELETE FROM questionnaires WHERE id = ?', [req.params.id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Тест не найден' });
+        }
+        await logAction(req.user.id, 'DELETE_QUESTIONNAIRE', 'questionnaire', parseInt(req.params.id));
+        res.json({ message: 'Тест удалён' });
+    } catch (error) {
+        console.error('Ошибка удаления теста:', error);
+        res.status(500).json({ error: 'Ошибка удаления теста' });
+    }
+});
+
 // Получение доступных тестов для студента
 app.get('/api/my-tests', authenticateToken, async (req, res) => {
     try {
@@ -776,6 +792,21 @@ app.get('/api/results', authenticateToken, requireAdmin, async (req, res) => {
     } catch (error) {
         console.error('Ошибка результатов:', error);
         res.status(500).json({ error: 'Ошибка загрузки результатов' });
+    }
+});
+
+// Удаление результата прохождения (только админ)
+app.delete('/api/results/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const [result] = await pool.execute('DELETE FROM results WHERE id = ?', [req.params.id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Результат не найден' });
+        }
+        await logAction(req.user.id, 'DELETE_RESULT', 'result', parseInt(req.params.id));
+        res.json({ message: 'Результат удалён' });
+    } catch (error) {
+        console.error('Ошибка удаления результата:', error);
+        res.status(500).json({ error: 'Ошибка удаления результата' });
     }
 });
 
