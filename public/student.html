@@ -516,18 +516,24 @@
                 bootstrap.Modal.getInstance(document.getElementById('testModal')).hide();
                 loadMyTests();
 
-                let scoreLine = String(data.score);
-                let interpLine = '';
-                if (currentMethodology) {
-                    scoreLine += ' / ' + currentMethodology.maxScore;
-                    const interp = window.interpretMethodology
-                        ? window.interpretMethodology(currentMethodology, data.score) : null;
-                    if (interp) interpLine = '\n' + t('rmodal.interpretation') + ': ' + interp.label;
+                let resultBlock;
+                if (currentMethodology && window.scoreMethodology) {
+                    // Полный подсчёт по шкалам (учитывает подшкалы и обратные вопросы)
+                    const sc = window.scoreMethodology(currentMethodology, answers);
+                    resultBlock = sc.scales.map(s => {
+                        const max = s.maxScore != null ? ' / ' + s.maxScore : '';
+                        const interp = s.interp ? ' — ' + s.interp.label : '';
+                        return `${s.name}: ${s.raw}${max}${interp}`;
+                    }).join('\n');
+                    const failed = sc.validity.filter(v => v.failed);
+                    if (failed.length) {
+                        resultBlock += '\n\n⚠ ' + failed.map(v => v.warning || v.name).join('; ');
+                    }
+                } else {
+                    resultBlock = t('msg.your_result') + ': ' + data.score;
                 }
 
-                alert('✅ ' + t('msg.test_finished') + '\n\n' +
-                      t('msg.your_result') + ': ' + scoreLine + interpLine + '\n\n' +
-                      t('msg.thanks'));
+                alert('✅ ' + t('msg.test_finished') + '\n\n' + resultBlock + '\n\n' + t('msg.thanks'));
             } catch (e) {
                 alert(t('msg.error') + ': ' + e.message);
             }

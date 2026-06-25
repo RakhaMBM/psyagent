@@ -11,20 +11,41 @@
                      тесте не нужно)
      description   — краткое описание
      instruction   — инструкция для студента (показывается перед вопросами)
-     answerOptions — варианты ответа с весами: [{ text, score }, ...]
-                     Балл = СТРОГАЯ СУММА весов выбранных вариантов.
-     questions     — массив формулировок утверждений (строки)
-     maxScore      — максимально возможный балл (для подписи «из N»)
-     interpretation— диапазоны: [{ min, max, level, label, color? }]
-                     label — текст уровня (показывается в таблице/диаграммах).
-                     level — произвольный ключ уровня. Для 'low' | 'medium' | 'high'
-                             есть стандартные цвета (зелёный/жёлтый/красный); любые
-                             другие значения тоже поддерживаются — цвет берётся из
-                             палитры автоматически.
-                     color — НЕОБЯЗАТЕЛЬНО: свой цвет диапазона (например '#ef476f').
+     answerOptions — варианты ответа с весами: [{ text, score }, ...].
+                     Общие для всех вопросов (вопрос может переопределить своими).
 
-   Можно сколько угодно уровней (2, 3, 5…) с любыми названиями — инфографика
-   на странице «Результаты» строится из этих данных и масштабируется сама.
+     questions     — список вопросов. Поддерживаются ДВА формата:
+                     • простой: массив строк (одна общая шкала, сумма весов);
+                     • расширенный: массив объектов
+                         { text, scale?, reverse?, options? }
+                       scale   — id подшкалы, к которой относится вопрос
+                                 (если не указан — попадает в первую/общую шкалу);
+                       reverse — обратный вопрос: вес считается зеркально
+                                 (min+max − выбранный), для прямых/обратных пунктов;
+                       options — свои варианты ответа для этого вопроса (иначе берутся
+                                 общие answerOptions).
+
+   --- Одношкальная методика (как раньше) ---
+     maxScore      — максимально возможный балл (подпись «из N»)
+     interpretation— диапазоны: [{ min, max, level, label, color? }]
+
+   --- Многошкальная методика (подшкалы) ---
+     scales        — массив подшкал, у каждой своя интерпретация:
+                     [{ id, name, maxScore?, interpretation: [{min,max,level,label,color?}] }]
+     validity      — НЕОБЯЗАТЕЛЬНО: шкалы достоверности (напр. «шкала лжи»):
+                     [{ id, name, scale, threshold, warning }]
+                     Если сумма по шкале > threshold — результат помечается
+                     как недостоверный (warning).
+
+   Подсказки по интерпретации:
+     label — текст уровня (показывается в таблице/диаграммах/отчётах).
+     level — произвольный ключ. Для 'low' | 'medium' | 'high' есть стандартные
+             цвета (зелёный/жёлтый/красный); любые другие значения тоже работают —
+             цвет берётся из палитры автоматически.
+     color — НЕОБЯЗАТЕЛЬНО: свой цвет диапазона (например '#ef476f').
+
+   Любое число шкал и уровней — подсчёт (scoreMethodology) и инфографика строятся
+   из этих данных и масштабируются сами. Балл считается на клиенте по этим правилам.
    ============================================ */
 
 window.PSY_METHODOLOGIES = [
@@ -84,15 +105,48 @@ window.findMethodologyById = function (id) {
     return (window.PSY_METHODOLOGIES || []).find(m => m.id === id) || null;
 };
 
-// Интерпретация балла по диапазонам методики -> { level, label } | null
-window.interpretMethodology = function (meth, score) {
-    if (!meth || !Array.isArray(meth.interpretation)) return null;
+// Определения шкал методики. Для одношкальной — собираем единственную шкалу 'total'.
+function getScaleDefs(meth) {
+    if (meth && Array.isArray(meth.scales) && meth.scales.length) return meth.scales;
+    return [{
+        id: 'total',
+        name: meth && meth.title ? meth.title : 'Итог',
+        maxScore: meth ? meth.maxScore : undefined,
+        interpretation: (meth && meth.interpretation) || []
+    }];
+}
+
+// Приводим вопросы к единому виду: { text, scale, reverse, options }.
+function normalizeQuestions(meth, defaultScaleId) {
+    const list = (meth && Array.isArray(meth.questions)) ? meth.questions : [];
+    const common = (meth && meth.answerOptions) || [];
+    return list.map(q => {
+        if (q && typeof q === 'object') {
+            return {
+                text: q.text || '',
+                scale: q.scale || defaultScaleId,
+                reverse: !!q.reverse,
+                options: q.options || common
+            };
+        }
+        return { text: String(q), scale: defaultScaleId, reverse: false, options: common };
+    });
+}
+
+// Интерпретация числа по набору диапазонов -> диапазон | null
+function interpretRange(ranges, score) {
+    if (!Array.isArray(ranges)) return null;
     const s = Number(score);
     if (!isFinite(s)) return null;
-    for (const r of meth.interpretation) {
+    for (const r of ranges) {
         if (s >= r.min && s <= r.max) return r;
     }
     return null;
+}
+
+// Обратная совместимость: интерпретация по общим диапазонам методики.
+window.interpretMethodology = function (meth, score) {
+    return interpretRange(meth && meth.interpretation, score);
 };
 
 // Признак «методики со взвешенными вариантами» по списку вопросов опросника
@@ -101,4 +155,70 @@ window.hasWeightedOptions = function (questions) {
         Array.isArray(q.options) &&
         q.options.some(o => o && typeof o === 'object' && typeof o.score === 'number')
     );
+};
+
+/**
+ * Полный подсчёт результата методики по ответам (единый движок).
+ * answers — объект { индексВопроса: текстВыбранногоВарианта }.
+ * Возвращает:
+ *   {
+ *     scales:   [{ id, name, raw, maxScore, interp }],  // по каждой подшкале
+ *     total:    суммарный балл по всем шкалам,
+ *     validity: [{ id, name, value, threshold, failed, warning }],
+ *     primary:  первая (главная) шкала
+ *   }
+ * Учитывает: подшкалы, обратные вопросы (reverse), свои варианты у вопроса,
+ * шкалы достоверности. Одношкальная методика — частный случай.
+ */
+window.scoreMethodology = function (meth, answers) {
+    const a = answers || {};
+    const scaleDefs = getScaleDefs(meth);
+    const defaultScaleId = scaleDefs[0] ? scaleDefs[0].id : 'total';
+    const questions = normalizeQuestions(meth, defaultScaleId);
+
+    const sums = {};
+    scaleDefs.forEach(s => { sums[s.id] = 0; });
+
+    questions.forEach((q, idx) => {
+        const ans = a[idx];
+        const opts = Array.isArray(q.options) ? q.options : [];
+        const opt = opts.find(o => (o && typeof o === 'object' ? o.text : o) === ans);
+        if (!opt || typeof opt.score !== 'number') return;
+
+        let sc = opt.score;
+        if (q.reverse) {
+            const nums = opts
+                .map(o => (o && typeof o === 'object') ? o.score : null)
+                .filter(n => typeof n === 'number');
+            if (nums.length) {
+                sc = (Math.min(...nums) + Math.max(...nums)) - sc;
+            }
+        }
+        if (sums[q.scale] == null) sums[q.scale] = 0;
+        sums[q.scale] += sc;
+    });
+
+    const scales = scaleDefs.map(s => ({
+        id: s.id,
+        name: s.name || s.id,
+        raw: sums[s.id] || 0,
+        maxScore: s.maxScore,
+        interp: interpretRange(s.interpretation, sums[s.id] || 0)
+    }));
+
+    const total = scaleDefs.reduce((acc, s) => acc + (sums[s.id] || 0), 0);
+
+    const validity = ((meth && meth.validity) || []).map(v => {
+        const value = sums[v.scale] != null ? sums[v.scale] : 0;
+        return {
+            id: v.id,
+            name: v.name,
+            value,
+            threshold: v.threshold,
+            failed: typeof v.threshold === 'number' && value > v.threshold,
+            warning: v.warning
+        };
+    });
+
+    return { scales, total, validity, primary: scales[0] || null };
 };

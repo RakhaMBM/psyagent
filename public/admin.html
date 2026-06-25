@@ -1401,7 +1401,7 @@
 
             arr.forEach(r => {
                 const m = methFor(r);
-                const range = m ? window.interpretMethodology(m, r.score) : null;
+                const range = interpForResult(r);
                 let label, color;
                 if (range) {
                     label = multiMeth ? `${shortText(m.title, 22)}: ${range.label}` : range.label;
@@ -1478,11 +1478,17 @@
             return 'bg-success';
         }
 
-        // Интерпретация результата по методике (подбирается по названию теста)
+        // Интерпретация результата по методике (главная шкала).
+        // Считаем через единый движок по сырым ответам — корректно для подшкал
+        // и обратных вопросов; если ответов нет — откат на сохранённый балл.
         function interpForResult(r) {
-            if (!window.findMethodologyByTitle) return null;
-            const m = window.findMethodologyByTitle(r.questionnaire_title);
-            return m ? window.interpretMethodology(m, r.score) : null;
+            const m = methFor(r);
+            if (!m) return null;
+            if (window.scoreMethodology && r.answers) {
+                const sc = window.scoreMethodology(m, r.answers);
+                return sc.primary ? sc.primary.interp : null;
+            }
+            return window.interpretMethodology(m, r.score);
         }
         function interpLabelFor(r) {
             const i = interpForResult(r);
@@ -1523,19 +1529,41 @@
                 if (!result) return;
 
                 const meth = window.findMethodologyByTitle ? window.findMethodologyByTitle(result.questionnaire_title) : null;
-                const interp = meth ? window.interpretMethodology(meth, result.score) : null;
-                const scoreStr = meth ? `${result.score} / ${meth.maxScore}` : `${result.score}`;
-                const interpHtml = interp
-                    ? `<div class="alert ${interp.level === 'high' ? 'alert-danger' : interp.level === 'medium' ? 'alert-warning' : 'alert-success'} py-2 mb-3">
-                           <strong>${t('rmodal.interpretation')}:</strong> ${interp.label}
-                       </div>`
-                    : '';
+                const sc = (meth && window.scoreMethodology) ? window.scoreMethodology(meth, result.answers || {}) : null;
+
+                const alertClass = (lvl) => lvl === 'high' ? 'alert-danger' : lvl === 'medium' ? 'alert-warning' : 'alert-success';
+                const badgeClass = (lvl) => lvl === 'high' ? 'bg-danger' : lvl === 'medium' ? 'bg-warning text-dark' : 'bg-success';
+
+                let summaryHtml, breakdownHtml = '';
+                if (sc) {
+                    // Предупреждения шкал достоверности
+                    breakdownHtml += sc.validity.filter(v => v.failed).map(v => `
+                        <div class="alert alert-warning py-2 mb-2">
+                            <i class="bi bi-exclamation-triangle me-1"></i>${v.warning || v.name} (${v.value})
+                        </div>`).join('');
+                    // Таблица по шкалам
+                    breakdownHtml += `
+                        <table class="table table-sm align-middle">
+                            <thead><tr><th>${t('rmodal.scale')}</th><th>${t('table.score')}</th><th>${t('rmodal.interpretation')}</th></tr></thead>
+                            <tbody>
+                                ${sc.scales.map(s => `
+                                    <tr>
+                                        <td>${s.name}</td>
+                                        <td><span class="badge ${s.interp ? badgeClass(s.interp.level) : 'bg-secondary'}">${s.raw}${s.maxScore != null ? ' / ' + s.maxScore : ''}</span></td>
+                                        <td>${s.interp ? s.interp.label : '—'}</td>
+                                    </tr>`).join('')}
+                            </tbody>
+                        </table>`;
+                    summaryHtml = `<p class="text-muted mb-2">${t('table.test')}: ${result.questionnaire_title}</p>`;
+                } else {
+                    summaryHtml = `<p class="text-muted">${t('table.test')}: ${result.questionnaire_title} | ${t('table.score')}: <strong>${result.score}</strong></p>`;
+                }
 
                 const body = document.getElementById('resultModalBody');
                 body.innerHTML = `
                     <h5>${result.full_name}</h5>
-                    <p class="text-muted">${t('table.test')}: ${result.questionnaire_title} | ${t('table.score')}: <strong>${scoreStr}</strong></p>
-                    ${interpHtml}
+                    ${summaryHtml}
+                    ${breakdownHtml}
                     <hr>
                     <h6>${t('rmodal.answers')}</h6>
                     <div class="table-responsive">

@@ -118,6 +118,7 @@
             'rmodal.title': 'Детали результата',
             'rmodal.answers': 'Ответы:',
             'rmodal.interpretation': 'Интерпретация',
+            'rmodal.scale': 'Шкала',
             // Назначение
             'amodal.title': 'Назначить тест',
             'amodal.choose_students': 'Выберите студентов',
@@ -309,6 +310,7 @@
             'rmodal.title': 'Нәтиже мәліметтері',
             'rmodal.answers': 'Жауаптар:',
             'rmodal.interpretation': 'Түсіндірме',
+            'rmodal.scale': 'Шкала',
             'amodal.title': 'Тест тағайындау',
             'amodal.choose_students': 'Студенттерді таңдаңыз',
             'amodal.select_all': 'Барлығын таңдау',
