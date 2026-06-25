@@ -37,6 +37,11 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showSection('methodologies')">
+                            <i class="bi bi-collection me-1"></i><span data-i18n="nav.methodologies">Методики</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="#" onclick="showSection('results')">
                             <i class="bi bi-graph-up me-1"></i><span data-i18n="nav.results">Результаты</span>
                         </a>
@@ -217,6 +222,18 @@
 
             <div class="row g-4" id="testsList">
             </div>
+        </section>
+
+        <!-- Секция: Методики -->
+        <section id="section-methodologies" class="p-4 d-none">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4><i class="bi bi-collection me-2"></i><span data-i18n="meth.title">Методики</span></h4>
+                <button class="btn btn-primary" onclick="openMethodologyEditor()">
+                    <i class="bi bi-plus-lg me-1"></i><span data-i18n="meth.create">Создать методику</span>
+                </button>
+            </div>
+            <p class="text-muted" data-i18n="meth.hint">Готовые методики доступны всегда. Свои методики можно создавать, редактировать и использовать при создании теста.</p>
+            <div class="row g-3" id="methodologiesList"></div>
         </section>
 
         <!-- Секция: Результаты -->
@@ -508,6 +525,66 @@
         </div>
     </div>
 
+    <!-- Модальное окно: Редактор методики -->
+    <div class="modal fade" id="methodologyEditorModal" tabindex="-1">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="meTitle" data-i18n="meth.create">Создать методику</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="meDbId">
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-12">
+                            <label class="form-label"><span data-i18n="meth.name">Название</span> *</label>
+                            <input type="text" class="form-control" id="meName" required>
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label" data-i18n="meth.description">Описание</label>
+                            <input type="text" class="form-control" id="meDescription">
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label" data-i18n="meth.instruction">Инструкция</label>
+                            <textarea class="form-control" id="meInstruction" rows="2"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0"><i class="bi bi-list-check me-2"></i><span data-i18n="meth.answer_options">Варианты ответа (общие)</span></h6>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="meAddOption()"><i class="bi bi-plus-lg"></i></button>
+                    </div>
+                    <div class="form-text mb-2" data-i18n="meth.answer_options_hint">Текст варианта и его вес (балл). Используются всеми вопросами.</div>
+                    <div id="meAnswerOptions" class="mb-4"></div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0"><i class="bi bi-rulers me-2"></i><span data-i18n="meth.scales">Шкалы и интерпретация</span></h6>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="meAddScale()"><i class="bi bi-plus-lg"></i></button>
+                    </div>
+                    <div class="form-text mb-2" data-i18n="meth.scales_hint">Одна шкала — обычная методика. Несколько — методика с подшкалами.</div>
+                    <div id="meScales" class="mb-4"></div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0"><i class="bi bi-card-list me-2"></i><span data-i18n="meth.questions">Вопросы</span></h6>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="meAddQuestion()"><i class="bi bi-plus-lg"></i></button>
+                    </div>
+                    <div id="meQuestions" class="mb-4"></div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0"><i class="bi bi-shield-check me-2"></i><span data-i18n="meth.validity">Шкалы достоверности</span> <small class="text-muted">(<span data-i18n="meth.optional">необязательно</span>)</small></h6>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="meAddValidity()"><i class="bi bi-plus-lg"></i></button>
+                    </div>
+                    <div id="meValidity" class="mb-2"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Отмена</button>
+                    <button type="button" class="btn btn-primary" onclick="saveMethodology()" data-i18n="common.save">Сохранить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -530,6 +607,7 @@
         loadStudents();
         loadTests();
         loadTestsForFilter();
+        loadCustomMethodologies();
 
         // Перерисовка динамических частей при смене языка
         window.onLangChange = function () {
@@ -537,6 +615,7 @@
             loadStudents();
             loadTests();
             loadResults();
+            loadMethodologiesList();
         };
 
         function showSection(sectionName) {
@@ -548,6 +627,302 @@
 
             if (sectionName === 'dashboard') loadDashboardStats();
             if (sectionName === 'results') loadResults();
+            if (sectionName === 'methodologies') loadMethodologiesList();
+        }
+
+        // ============================================
+        // ПОЛЬЗОВАТЕЛЬСКИЕ МЕТОДИКИ (список + редактор)
+        // ============================================
+        let customMethodologies = [];
+
+        async function loadCustomMethodologies() {
+            try {
+                const res = await fetch('/api/methodologies', { headers: { 'Authorization': `Bearer ${token}` } });
+                const raw = await res.json();
+                customMethodologies = Array.isArray(raw) ? raw : [];
+                if (window.registerMethodologies) window.registerMethodologies(customMethodologies);
+            } catch (e) {
+                customMethodologies = [];
+            }
+            loadMethodologiesList();
+            populateMethodologySelect();
+        }
+
+        function loadMethodologiesList() {
+            const container = document.getElementById('methodologiesList');
+            if (!container) return;
+            const builtin = window.PSY_METHODOLOGIES || [];
+            const cards = [];
+
+            builtin.forEach(m => {
+                cards.push(`
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <span class="badge bg-secondary mb-2">${t('meth.builtin')}</span>
+                                <h6 class="card-title">${m.title}</h6>
+                                <p class="card-text text-muted small">${m.description || ''}</p>
+                                <small class="text-muted">${(m.questions || []).length} ${t('tests.q_count')}</small>
+                            </div>
+                        </div>
+                    </div>`);
+            });
+
+            customMethodologies.forEach(m => {
+                cards.push(`
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card h-100 border-primary">
+                            <div class="card-body">
+                                <span class="badge bg-primary mb-2">${t('meth.custom')}</span>
+                                <h6 class="card-title">${m.title}</h6>
+                                <p class="card-text text-muted small">${m.description || ''}</p>
+                                <small class="text-muted">${(m.questions || []).length} ${t('tests.q_count')}</small>
+                            </div>
+                            <div class="card-footer bg-transparent border-top-0 d-flex gap-2">
+                                <button class="btn btn-sm btn-outline-primary" onclick="openMethodologyEditor(${m._dbId})">
+                                    <i class="bi bi-pencil me-1"></i>${t('common.edit')}
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteMethodology(${m._dbId})">
+                                    <i class="bi bi-trash me-1"></i>${t('common.delete')}
+                                </button>
+                            </div>
+                        </div>
+                    </div>`);
+            });
+
+            container.innerHTML = cards.join('') ||
+                `<div class="col-12 text-muted">${t('meth.empty')}</div>`;
+        }
+
+        // ---------- Редактор методики: строки ----------
+        function meAddOption(text = '', score = '') {
+            document.getElementById('meAnswerOptions').insertAdjacentHTML('beforeend', `
+                <div class="row g-2 mb-2 me-option-row align-items-center">
+                    <div class="col"><input class="form-control form-control-sm me-opt-text" placeholder="${t('meth.opt_text')}" value="${String(text).replace(/"/g, '&quot;')}"></div>
+                    <div class="col-auto" style="width:130px"><input type="number" class="form-control form-control-sm me-opt-score" placeholder="${t('meth.opt_score')}" value="${score}"></div>
+                    <div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.me-option-row').remove()">×</button></div>
+                </div>`);
+        }
+
+        function meAddScale(name = '', maxScore = '') {
+            document.getElementById('meScales').insertAdjacentHTML('beforeend', `
+                <div class="card mb-2 me-scale-card">
+                    <div class="card-body p-2">
+                        <div class="row g-2 mb-2 align-items-center">
+                            <div class="col"><input class="form-control form-control-sm me-scale-name" placeholder="${t('meth.scale_name')}" oninput="meRefreshScaleSelects()" value="${String(name).replace(/"/g, '&quot;')}"></div>
+                            <div class="col-auto" style="width:130px"><input type="number" class="form-control form-control-sm me-scale-max" placeholder="${t('meth.scale_max')}" value="${maxScore}"></div>
+                            <div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger" onclick="meRemoveScale(this)">×</button></div>
+                        </div>
+                        <div class="ms-2">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <small class="text-muted">${t('meth.interp_ranges')}</small>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="meAddRange(this)"><i class="bi bi-plus"></i></button>
+                            </div>
+                            <div class="me-ranges"></div>
+                        </div>
+                    </div>
+                </div>`);
+            meRefreshScaleSelects();
+        }
+
+        function meRemoveScale(btn) {
+            btn.closest('.me-scale-card').remove();
+            meRefreshScaleSelects();
+        }
+
+        function meAddRange(btn, range = {}) {
+            const levelOpts = ['', 'low', 'medium', 'high'].map(l =>
+                `<option value="${l}" ${range.level === l ? 'selected' : ''}>${l ? t('level.' + l) : '—'}</option>`).join('');
+            btn.closest('.me-scale-card').querySelector('.me-ranges').insertAdjacentHTML('beforeend', `
+                <div class="row g-2 mb-1 me-range-row align-items-center">
+                    <div class="col-auto" style="width:90px"><input type="number" class="form-control form-control-sm me-range-min" placeholder="${t('meth.range_min')}" value="${range.min != null ? range.min : ''}"></div>
+                    <div class="col-auto" style="width:90px"><input type="number" class="form-control form-control-sm me-range-max" placeholder="${t('meth.range_max')}" value="${range.max != null ? range.max : ''}"></div>
+                    <div class="col"><input class="form-control form-control-sm me-range-label" placeholder="${t('meth.range_label')}" value="${(range.label || '').replace(/"/g, '&quot;')}"></div>
+                    <div class="col-auto"><select class="form-select form-select-sm me-range-level" style="width:auto">${levelOpts}</select></div>
+                    <div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.me-range-row').remove()">×</button></div>
+                </div>`);
+        }
+
+        function meAddQuestion(text = '', scaleId = '', reverse = false) {
+            const n = document.querySelectorAll('#meQuestions .me-question-row').length + 1;
+            document.getElementById('meQuestions').insertAdjacentHTML('beforeend', `
+                <div class="row g-2 mb-2 me-question-row align-items-center">
+                    <div class="col-auto pt-1 text-muted small me-qnum" style="width:28px">${n}</div>
+                    <div class="col"><input class="form-control form-control-sm me-q-text" placeholder="${t('meth.q_text')}" value="${String(text).replace(/"/g, '&quot;')}"></div>
+                    <div class="col-auto"><select class="form-select form-select-sm me-scale-select me-q-scale" style="width:auto" data-selected="${scaleId}"></select></div>
+                    <div class="col-auto"><div class="form-check" title="${t('meth.q_reverse')}"><input class="form-check-input me-q-reverse" type="checkbox" ${reverse ? 'checked' : ''}><label class="form-check-label small">${t('meth.reverse_short')}</label></div></div>
+                    <div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.me-question-row').remove(); meRenumberQuestions()">×</button></div>
+                </div>`);
+            meRefreshScaleSelects();
+        }
+
+        function meRenumberQuestions() {
+            document.querySelectorAll('#meQuestions .me-qnum').forEach((el, i) => el.textContent = i + 1);
+        }
+
+        function meAddValidity(name = '', threshold = '', warning = '') {
+            document.getElementById('meValidity').insertAdjacentHTML('beforeend', `
+                <div class="row g-2 mb-2 me-validity-row align-items-center">
+                    <div class="col"><input class="form-control form-control-sm me-v-name" placeholder="${t('meth.v_name')}" oninput="meRefreshScaleSelects()" value="${String(name).replace(/"/g, '&quot;')}"></div>
+                    <div class="col-auto" style="width:120px"><input type="number" class="form-control form-control-sm me-v-threshold" placeholder="${t('meth.v_threshold')}" value="${threshold}"></div>
+                    <div class="col"><input class="form-control form-control-sm me-v-warning" placeholder="${t('meth.v_warning')}" value="${String(warning).replace(/"/g, '&quot;')}"></div>
+                    <div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.me-validity-row').remove(); meRefreshScaleSelects()">×</button></div>
+                </div>`);
+            meRefreshScaleSelects();
+        }
+
+        // Список доступных шкал (обычные s0..N + шкалы достоверности v0..N) для выпадающих списков вопросов
+        function meScaleOptions() {
+            const opts = [];
+            document.querySelectorAll('#meScales .me-scale-card').forEach((card, i) => {
+                opts.push({ id: 's' + i, name: card.querySelector('.me-scale-name').value.trim() || (t('rmodal.scale') + ' ' + (i + 1)) });
+            });
+            document.querySelectorAll('#meValidity .me-validity-row').forEach((row, i) => {
+                const nm = row.querySelector('.me-v-name').value.trim() || (t('meth.validity') + ' ' + (i + 1));
+                opts.push({ id: 'v' + i, name: nm + ' · ' + t('meth.validity') });
+            });
+            return opts;
+        }
+
+        function meRefreshScaleSelects() {
+            const opts = meScaleOptions();
+            document.querySelectorAll('.me-scale-select').forEach(sel => {
+                const cur = sel.value || sel.getAttribute('data-selected') || '';
+                sel.innerHTML = opts.length
+                    ? opts.map(o => `<option value="${o.id}">${o.name}</option>`).join('')
+                    : '<option value="s0">—</option>';
+                if (opts.some(o => o.id === cur)) sel.value = cur;
+            });
+        }
+
+        function serializeMethodology() {
+            const answerOptions = [...document.querySelectorAll('#meAnswerOptions .me-option-row')].map(r => ({
+                text: r.querySelector('.me-opt-text').value.trim(),
+                score: Number(r.querySelector('.me-opt-score').value)
+            })).filter(o => o.text !== '' && isFinite(o.score));
+
+            const scales = [...document.querySelectorAll('#meScales .me-scale-card')].map((card, i) => {
+                const maxV = card.querySelector('.me-scale-max').value;
+                const interpretation = [...card.querySelectorAll('.me-range-row')].map(rr => {
+                    const level = rr.querySelector('.me-range-level').value;
+                    const o = {
+                        min: Number(rr.querySelector('.me-range-min').value),
+                        max: Number(rr.querySelector('.me-range-max').value),
+                        label: rr.querySelector('.me-range-label').value.trim()
+                    };
+                    if (level) o.level = level;
+                    return o;
+                }).filter(x => x.label !== '');
+                const scale = { id: 's' + i, name: card.querySelector('.me-scale-name').value.trim() || (t('rmodal.scale') + ' ' + (i + 1)), interpretation };
+                if (maxV !== '') scale.maxScore = Number(maxV);
+                return scale;
+            });
+
+            const questions = [...document.querySelectorAll('#meQuestions .me-question-row')].map(r => {
+                const q = { text: r.querySelector('.me-q-text').value.trim(), scale: r.querySelector('.me-q-scale').value || 's0' };
+                if (r.querySelector('.me-q-reverse').checked) q.reverse = true;
+                return q;
+            }).filter(q => q.text !== '');
+
+            const validity = [...document.querySelectorAll('#meValidity .me-validity-row')].map((r, i) => ({
+                id: 'v' + i,
+                name: r.querySelector('.me-v-name').value.trim(),
+                scale: 'v' + i,
+                threshold: Number(r.querySelector('.me-v-threshold').value),
+                warning: r.querySelector('.me-v-warning').value.trim()
+            })).filter(v => v.name !== '');
+
+            const meth = {
+                title: document.getElementById('meName').value.trim(),
+                description: document.getElementById('meDescription').value.trim(),
+                instruction: document.getElementById('meInstruction').value.trim(),
+                answerOptions,
+                scales,
+                questions
+            };
+            if (validity.length) meth.validity = validity;
+            return meth;
+        }
+
+        function loadMethodologyIntoEditor(m) {
+            document.getElementById('meName').value = m.title || '';
+            document.getElementById('meDescription').value = m.description || '';
+            document.getElementById('meInstruction').value = m.instruction || '';
+            (m.answerOptions || []).forEach(o => meAddOption(o.text, o.score));
+            (m.validity || []).forEach(v => meAddValidity(v.name, v.threshold, v.warning));
+            const scales = (m.scales && m.scales.length) ? m.scales : [{ name: m.title, maxScore: m.maxScore, interpretation: m.interpretation || [] }];
+            scales.forEach(s => {
+                meAddScale(s.name, s.maxScore != null ? s.maxScore : '');
+                const card = document.querySelector('#meScales .me-scale-card:last-child');
+                const anyBtn = card.querySelector('button');
+                (s.interpretation || []).forEach(r => meAddRange(anyBtn, r));
+            });
+            meRefreshScaleSelects();
+            (m.questions || []).forEach(q => {
+                const text = (q && typeof q === 'object') ? q.text : q;
+                const scale = (q && typeof q === 'object') ? (q.scale || 's0') : 's0';
+                const reverse = (q && typeof q === 'object') ? !!q.reverse : false;
+                meAddQuestion(text, scale, reverse);
+            });
+            meRefreshScaleSelects();
+        }
+
+        function openMethodologyEditor(dbId) {
+            document.getElementById('meAnswerOptions').innerHTML = '';
+            document.getElementById('meScales').innerHTML = '';
+            document.getElementById('meQuestions').innerHTML = '';
+            document.getElementById('meValidity').innerHTML = '';
+            document.getElementById('meDbId').value = dbId || '';
+            document.getElementById('meTitle').textContent = dbId ? t('meth.edit') : t('meth.create');
+
+            if (dbId) {
+                const m = customMethodologies.find(x => x._dbId === dbId);
+                if (m) loadMethodologyIntoEditor(m);
+            } else {
+                meAddOption('', '');
+                meAddOption('', '');
+                meAddScale('', '');
+                meAddRange(document.querySelector('#meScales .me-scale-card button'));
+                meAddQuestion();
+            }
+            new bootstrap.Modal(document.getElementById('methodologyEditorModal')).show();
+        }
+
+        async function saveMethodology() {
+            const meth = serializeMethodology();
+            if (!meth.title || meth.questions.length === 0 || meth.answerOptions.length === 0) {
+                alert(t('meth.need_fields'));
+                return;
+            }
+            const dbId = document.getElementById('meDbId').value;
+            try {
+                const res = await fetch(dbId ? `/api/methodologies/${dbId}` : '/api/methodologies', {
+                    method: dbId ? 'PUT' : 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify(meth)
+                });
+                if (!res.ok) throw new Error(await res.text());
+                bootstrap.Modal.getInstance(document.getElementById('methodologyEditorModal')).hide();
+                await loadCustomMethodologies();
+                alert(t('meth.saved'));
+            } catch (e) {
+                alert(t('msg.error') + ': ' + e.message);
+            }
+        }
+
+        async function deleteMethodology(dbId) {
+            if (!confirm(t('meth.confirm_delete'))) return;
+            try {
+                const res = await fetch(`/api/methodologies/${dbId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error(await res.text());
+                await loadCustomMethodologies();
+                alert(t('meth.deleted'));
+            } catch (e) {
+                alert(t('msg.error') + ': ' + e.message);
+            }
         }
 
         async function loadDashboardStats() {
@@ -955,9 +1330,10 @@
 
         function populateMethodologySelect() {
             const select = document.getElementById('methodologySelect');
-            if (!select || !Array.isArray(window.PSY_METHODOLOGIES)) return;
+            if (!select) return;
+            const all = window.allMethodologies ? window.allMethodologies() : (window.PSY_METHODOLOGIES || []);
             select.innerHTML = `<option value="">${t('tmodal.custom_test')}</option>` +
-                window.PSY_METHODOLOGIES.map(m => `<option value="${m.id}">${m.title}</option>`).join('');
+                all.map(m => `<option value="${m.id}">${m.title}</option>`).join('');
         }
 
         function onMethodologyChange() {
@@ -1118,16 +1494,16 @@
             let title, description, questions;
 
             if (currentMethodology) {
-                // Готовая методика: вопросы и веса вариантов берём из methodologies.js
+                // Готовая методика: вопросы и веса вариантов берём из определения методики.
+                // Вопрос может быть строкой ИЛИ объектом { text, scale, reverse, options }.
                 const m = currentMethodology;
                 title = m.title;
                 description = m.description || '';
-                questions = m.questions.map(text => ({
-                    questionText: text,
-                    questionType: 'single',
-                    options: m.answerOptions, // [{ text, score }, ...] — сервер считает по сумме весов
-                    isRequired: true
-                }));
+                questions = m.questions.map(q => {
+                    const text = (q && typeof q === 'object') ? q.text : q;
+                    const options = (q && typeof q === 'object' && q.options) ? q.options : m.answerOptions;
+                    return { questionText: text, questionType: 'single', options: options, isRequired: true };
+                });
             } else {
                 title = this.title.value;
                 description = this.description.value;

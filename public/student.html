@@ -169,6 +169,16 @@
             loadUserInfo();
         };
 
+        // Подгружаем пользовательские методики из БД, чтобы корректно считать
+        // балл и интерпретацию для тестов, созданных психологом.
+        async function loadCustomMethodologies() {
+            try {
+                const res = await fetch('/api/methodologies', { headers: { 'Authorization': `Bearer ${token}` } });
+                const raw = await res.json();
+                if (window.registerMethodologies) window.registerMethodologies(Array.isArray(raw) ? raw : []);
+            } catch (e) { /* без пользовательских методик — работают встроенные */ }
+        }
+
         async function loadUserInfo() {
             try {
                 const res = await fetch('/api/auth/me', {
@@ -545,7 +555,7 @@
             window.location.href = '/';
         }
 
-        loadUserInfo();
+        loadCustomMethodologies().then(loadUserInfo);
     </script>
 </body>
 </html>

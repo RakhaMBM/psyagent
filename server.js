@@ -27,14 +27,35 @@ const pool = mysql2.createPool({
     charset: 'utf8mb4'
 });
 
-// Проверка подключения
+// Проверка подключения + авто-создание недостающих таблиц
 async function testConnection() {
     try {
         const conn = await pool.getConnection();
         console.log(' Подключение к базе данных успешно!');
         conn.release();
+        await ensureSchema();
     } catch (error) {
         console.error(' Ошибка подключения к БД:', error.message);
+    }
+}
+
+// Создаёт таблицы, которых может не быть в уже развёрнутой БД (без ручной миграции).
+async function ensureSchema() {
+    try {
+        await pool.execute(`
+            CREATE TABLE IF NOT EXISTS methodologies (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                meth_key VARCHAR(100) UNIQUE,
+                title VARCHAR(255) NOT NULL,
+                data JSON NOT NULL,
+                created_by INT,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+        `);
+    } catch (e) {
+        console.error('Ошибка создания таблиц:', e.message);
     }
 }
 testConnection();
@@ -911,6 +932,80 @@ app.get('/api/groups', authenticateToken, requireAdmin, async (req, res) => {
         res.json(groups);
     } catch (error) {
         res.status(500).json({ error: 'Ошибка' });
+    }
+});
+
+// ============================================
+// API РОУТЫ - ПОЛЬЗОВАТЕЛЬСКИЕ МЕТОДИКИ (БД)
+// ============================================
+
+// Список методик (любой авторизованный — нужно студентам для подсчёта по формуле)
+app.get('/api/methodologies', authenticateToken, async (req, res) => {
+    try {
+        const [rows] = await pool.execute(
+            'SELECT id, meth_key, title, data FROM methodologies WHERE is_active = TRUE ORDER BY title'
+        );
+        const list = rows.map(r => {
+            const data = typeof r.data === 'string' ? JSON.parse(r.data) : r.data;
+            return { ...data, id: data.id || r.meth_key || ('db-' + r.id), _dbId: r.id, title: r.title };
+        });
+        res.json(list);
+    } catch (error) {
+        console.error('Ошибка загрузки методик:', error);
+        res.status(500).json({ error: 'Ошибка загрузки методик' });
+    }
+});
+
+// Создание методики (админ)
+app.post('/api/methodologies', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const data = req.body || {};
+        if (!data.title || !Array.isArray(data.questions) || data.questions.length === 0) {
+            return res.status(400).json({ error: 'Укажите название и хотя бы один вопрос' });
+        }
+        const methKey = data.id || ('m-' + Date.now());
+        data.id = methKey;
+        const [result] = await pool.execute(
+            'INSERT INTO methodologies (meth_key, title, data, created_by) VALUES (?, ?, ?, ?)',
+            [methKey, data.title, JSON.stringify(data), req.user.id]
+        );
+        await logAction(req.user.id, 'CREATE_METHODOLOGY', 'methodology', result.insertId, { title: data.title });
+        res.status(201).json({ id: result.insertId, message: 'Методика создана' });
+    } catch (error) {
+        console.error('Ошибка создания методики:', error);
+        if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Методика с таким ключом уже существует' });
+        res.status(500).json({ error: 'Ошибка создания методики' });
+    }
+});
+
+// Обновление методики (админ)
+app.put('/api/methodologies/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const data = req.body || {};
+        if (!data.title || !Array.isArray(data.questions) || data.questions.length === 0) {
+            return res.status(400).json({ error: 'Укажите название и хотя бы один вопрос' });
+        }
+        await pool.execute(
+            'UPDATE methodologies SET title = ?, data = ?, updated_at = NOW() WHERE id = ?',
+            [data.title, JSON.stringify(data), req.params.id]
+        );
+        await logAction(req.user.id, 'UPDATE_METHODOLOGY', 'methodology', parseInt(req.params.id), { title: data.title });
+        res.json({ message: 'Методика обновлена' });
+    } catch (error) {
+        console.error('Ошибка обновления методики:', error);
+        res.status(500).json({ error: 'Ошибка обновления методики' });
+    }
+});
+
+// Удаление методики (админ)
+app.delete('/api/methodologies/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await pool.execute('DELETE FROM methodologies WHERE id = ?', [req.params.id]);
+        await logAction(req.user.id, 'DELETE_METHODOLOGY', 'methodology', parseInt(req.params.id));
+        res.json({ message: 'Методика удалена' });
+    } catch (error) {
+        console.error('Ошибка удаления методики:', error);
+        res.status(500).json({ error: 'Ошибка удаления методики' });
     }
 });
 

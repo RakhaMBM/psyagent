@@ -93,16 +93,27 @@ window.PSY_METHODOLOGIES = [
 
 /* ---------- Хелперы (доступны глобально на всех страницах) ---------- */
 
-// Поиск методики по точному названию теста
+// Пользовательские методики из БД (загружаются страницей через /api/methodologies).
+window.CUSTOM_METHODOLOGIES = [];
+window.registerMethodologies = function (arr) {
+    window.CUSTOM_METHODOLOGIES = Array.isArray(arr) ? arr : [];
+};
+
+// Все методики: встроенные (этот файл) + пользовательские (из БД).
+window.allMethodologies = function () {
+    return [].concat(window.PSY_METHODOLOGIES || [], window.CUSTOM_METHODOLOGIES || []);
+};
+
+// Поиск методики по точному названию теста (среди встроенных и пользовательских)
 window.findMethodologyByTitle = function (title) {
     if (!title) return null;
     const n = String(title).trim();
-    return (window.PSY_METHODOLOGIES || []).find(m => String(m.title).trim() === n) || null;
+    return window.allMethodologies().find(m => String(m.title).trim() === n) || null;
 };
 
 // Поиск методики по id
 window.findMethodologyById = function (id) {
-    return (window.PSY_METHODOLOGIES || []).find(m => m.id === id) || null;
+    return window.allMethodologies().find(m => m.id === id) || null;
 };
 
 // Определения шкал методики. Для одношкальной — собираем единственную шкалу 'total'.

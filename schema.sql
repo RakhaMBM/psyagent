@@ -94,6 +94,20 @@ CREATE TABLE assignments (
     FOREIGN KEY (assigned_by) REFERENCES users(id)
 );
 
+-- Пользовательские методики (создаются психологом через редактор).
+-- Всё определение методики (вопросы, шкалы, интерпретация) хранится в JSON `data`.
+CREATE TABLE methodologies (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    meth_key VARCHAR(100) UNIQUE,
+    title VARCHAR(255) NOT NULL,
+    data JSON NOT NULL,
+    created_by INT,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
 -- Журнал действий (для аудита)
 CREATE TABLE audit_log (
     id INT AUTO_INCREMENT PRIMARY KEY,
