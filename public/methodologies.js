@@ -43,6 +43,8 @@
              цвета (зелёный/жёлтый/красный); любые другие значения тоже работают —
              цвет берётся из палитры автоматически.
      color — НЕОБЯЗАТЕЛЬНО: свой цвет диапазона (например '#ef476f').
+     attention — НЕОБЯЗАТЕЛЬНО: true, если этот уровень — повод для внимания
+                 (студент попадает в «группу риска»). Так риск задаёт сама методика.
 
    Любое число шкал и уровней — подсчёт (scoreMethodology) и инфографика строятся
    из этих данных и масштабируются сами. Балл считается на клиенте по этим правилам.
@@ -84,7 +86,7 @@ window.PSY_METHODOLOGIES = [
         ],
         maxScore: 60,
         interpretation: [
-            { min: 40, max: 60, level: 'high',   label: 'Высокая степень одиночества' },
+            { min: 40, max: 60, level: 'high',   label: 'Высокая степень одиночества', attention: true },
             { min: 20, max: 40, level: 'medium', label: 'Средний уровень одиночества' },
             { min: 0,  max: 20, level: 'low',    label: 'Низкий уровень одиночества' }
         ]
@@ -232,4 +234,18 @@ window.scoreMethodology = function (meth, answers) {
     });
 
     return { scales, total, validity, primary: scales[0] || null };
+};
+
+/**
+ * Признак «группы риска» по результату: верно, если у какой-либо шкалы попавший
+ * диапазон интерпретации отмечен флагом attention: true (это задаёт сама методика).
+ * -> { atRisk: boolean, reasons: [{ scale, label }] }
+ */
+window.resultAttention = function (meth, answers) {
+    if (!meth || typeof window.scoreMethodology !== 'function') return { atRisk: false, reasons: [] };
+    const sc = window.scoreMethodology(meth, answers || {});
+    const reasons = sc.scales
+        .filter(s => s.interp && s.interp.attention)
+        .map(s => ({ scale: s.name, label: s.interp.label }));
+    return { atRisk: reasons.length > 0, reasons };
 };

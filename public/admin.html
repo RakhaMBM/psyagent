@@ -146,6 +146,37 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Группа риска -->
+            <div class="row g-4 mt-1">
+                <div class="col-12">
+                    <div class="card border-danger">
+                        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0 text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i><span data-i18n="risk.title">Группа риска</span></h6>
+                            <span class="badge bg-danger" id="riskCount">0</span>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th data-i18n="table.student">Студент</th>
+                                            <th data-i18n="table.group">Группа</th>
+                                            <th data-i18n="table.test">Тест</th>
+                                            <th data-i18n="risk.reason">Показатель</th>
+                                            <th data-i18n="table.date">Дата</th>
+                                            <th data-i18n="common.actions">Действия</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="riskTableBody">
+                                        <tr><td colspan="6" class="text-center text-muted py-3" data-i18n="common.loading">Загрузка...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- Секция: Студенты -->
@@ -646,6 +677,7 @@
             }
             loadMethodologiesList();
             populateMethodologySelect();
+            loadDashboardStats(); // обновляем группу риска с учётом пользовательских методик
         }
 
         function loadMethodologiesList() {
@@ -739,6 +771,7 @@
                     <div class="col-auto" style="width:90px"><input type="number" class="form-control form-control-sm me-range-max" placeholder="${t('meth.range_max')}" value="${range.max != null ? range.max : ''}"></div>
                     <div class="col"><input class="form-control form-control-sm me-range-label" placeholder="${t('meth.range_label')}" value="${(range.label || '').replace(/"/g, '&quot;')}"></div>
                     <div class="col-auto"><select class="form-select form-select-sm me-range-level" style="width:auto">${levelOpts}</select></div>
+                    <div class="col-auto"><div class="form-check" title="${t('meth.range_attention_hint')}"><input class="form-check-input me-range-attention" type="checkbox" ${range.attention ? 'checked' : ''}><label class="form-check-label small text-danger">${t('meth.range_attention')}</label></div></div>
                     <div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.me-range-row').remove()">×</button></div>
                 </div>`);
         }
@@ -811,6 +844,7 @@
                         label: rr.querySelector('.me-range-label').value.trim()
                     };
                     if (level) o.level = level;
+                    if (rr.querySelector('.me-range-attention').checked) o.attention = true;
                     return o;
                 }).filter(x => x.label !== '');
                 const scale = { id: 's' + i, name: card.querySelector('.me-scale-name').value.trim() || (t('rmodal.scale') + ' ' + (i + 1)), interpretation };
@@ -927,16 +961,19 @@
 
         async function loadDashboardStats() {
             try {
-                const [studentsRes, groupsRes] = await Promise.all([
+                const [studentsRes, groupsRes, resultsRes] = await Promise.all([
                     fetch('/api/students', { headers: { 'Authorization': `Bearer ${token}` }}),
-                    fetch('/api/statistics/groups', { headers: { 'Authorization': `Bearer ${token}` }})
+                    fetch('/api/statistics/groups', { headers: { 'Authorization': `Bearer ${token}` }}),
+                    fetch('/api/results', { headers: { 'Authorization': `Bearer ${token}` }})
                 ]);
 
                 const studentsRaw = await studentsRes.json();
                 const groupsRaw = await groupsRes.json();
+                const resultsRaw = await resultsRes.json();
 
                 const students = Array.isArray(studentsRaw) ? studentsRaw : (studentsRaw?.data || []);
                 const groups = Array.isArray(groupsRaw) ? groupsRaw : (groupsRaw?.data || []);
+                const results = Array.isArray(resultsRaw) ? resultsRaw : (resultsRaw?.data || []);
 
                 document.getElementById('totalStudents').textContent = students.length;
 
@@ -944,6 +981,8 @@
                 groups.forEach(g => { completed += parseInt(g.completed_tests) || 0; });
                 document.getElementById('completedTests').textContent = completed;
                 document.getElementById('pendingTests').textContent = Math.max(0, students.length - completed);
+
+                renderRiskGroup(results);
 
                 const tbody = document.getElementById('groupsTableBody');
                 if (groups.length === 0) {
@@ -960,6 +999,43 @@
 
                 renderCharts(groups, students);
             } catch (e) { console.error(e); }
+        }
+
+        // Группа риска: результаты, попавшие в диапазон, отмеченный методикой как attention.
+        function renderRiskGroup(results) {
+            const tbody = document.getElementById('riskTableBody');
+            const countEl = document.getElementById('riskCount');
+            if (!tbody) return;
+
+            const atRisk = [];
+            (results || []).forEach(r => {
+                const m = window.findMethodologyByTitle ? window.findMethodologyByTitle(r.questionnaire_title) : null;
+                if (!m || !window.resultAttention) return;
+                const a = window.resultAttention(m, r.answers || {});
+                if (a.atRisk) atRisk.push({ r, reasons: a.reasons });
+            });
+            atRisk.sort((x, y) => new Date(y.r.completed_at || 0) - new Date(x.r.completed_at || 0));
+
+            if (countEl) countEl.textContent = atRisk.length;
+            if (atRisk.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-3">${t('risk.empty')}</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = atRisk.map(({ r, reasons }) => `
+                <tr>
+                    <td class="fw-semibold">${r.full_name}</td>
+                    <td>${r.group_name || '-'}</td>
+                    <td>${r.questionnaire_title}</td>
+                    <td><span class="badge bg-danger">${reasons.map(x => x.label).join('; ')}</span></td>
+                    <td>${formatDateTime(r.completed_at)}</td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-info" onclick="viewResult(${r.id})" title="${t('tests.view')}"><i class="bi bi-eye"></i></button>
+                            <button class="btn btn-outline-secondary" onclick="printStudentReport(${r.user_id})" title="${t('report.print')}"><i class="bi bi-printer"></i></button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
         }
 
         function renderCharts(groups, students) {
@@ -1992,15 +2068,39 @@
             return `<p>${t('table.score')}: <strong>${r.score}</strong></p>`;
         }
 
+        // Динамика по тесту: последовательность баллов главной шкалы во времени
+        function reportDynamics(group) {
+            if (group.length < 2) return '';
+            const seq = group.map(r => {
+                const m = window.findMethodologyByTitle ? window.findMethodologyByTitle(r.questionnaire_title) : null;
+                const sc = (m && window.scoreMethodology) ? window.scoreMethodology(m, r.answers || {}) : null;
+                return sc && sc.primary ? sc.primary.raw : r.score;
+            });
+            return `<p class="meta"><strong>${t('report.dynamics')}:</strong> ${seq.join(' → ')}</p>`;
+        }
+
         function buildStudentReport(student, results) {
             const date = new Date().toLocaleDateString(getLang() === 'kz' ? 'kk-KZ' : 'ru-RU');
+
+            // Группируем по тесту, внутри группы — по дате (от старых к новым) для динамики
+            const byTest = {};
+            results.forEach(r => { (byTest[r.questionnaire_title] = byTest[r.questionnaire_title] || []).push(r); });
+            Object.values(byTest).forEach(g => g.sort((a, b) => new Date(a.completed_at || 0) - new Date(b.completed_at || 0)));
+
             const resultsHtml = results.length
-                ? results.map(r => `
-                    <div class="result">
-                        <h3>${r.questionnaire_title}</h3>
-                        <p class="meta">${t('table.date')}: ${formatDateTime(r.completed_at)}</p>
-                        ${reportResultBody(r)}
-                    </div>`).join('')
+                ? Object.keys(byTest).map(testTitle => {
+                    const group = byTest[testTitle];
+                    return `
+                        <div class="result">
+                            <h3>${testTitle}</h3>
+                            ${reportDynamics(group)}
+                            ${group.map(r => `
+                                <div class="run">
+                                    <p class="meta">${t('table.date')}: ${formatDateTime(r.completed_at)}</p>
+                                    ${reportResultBody(r)}
+                                </div>`).join('')}
+                        </div>`;
+                }).join('')
                 : `<p class="muted">${t('report.no_results')}</p>`;
             return `
                 <h1>${t('report.title')}</h1>
