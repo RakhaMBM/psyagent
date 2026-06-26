@@ -13,7 +13,7 @@ CREATE TABLE users (
     username VARCHAR(100) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
     full_name VARCHAR(255) NOT NULL,
-    role ENUM('admin', 'student') NOT NULL DEFAULT 'student',
+    role ENUM('admin', 'curator', 'student') NOT NULL DEFAULT 'student',
     birth_date DATE,
     group_name VARCHAR(100),
     email VARCHAR(150),

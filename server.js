@@ -187,7 +187,7 @@ async function ensureTenantSchema(db) {
             username VARCHAR(100) UNIQUE NOT NULL,
             password VARCHAR(255) NOT NULL,
             full_name VARCHAR(255) NOT NULL,
-            role ENUM('admin','student') NOT NULL DEFAULT 'student',
+            role ENUM('admin','curator','student') NOT NULL DEFAULT 'student',
             birth_date DATE,
             group_name VARCHAR(100),
             email VARCHAR(150),
@@ -288,6 +288,10 @@ async function ensureTenantSchema(db) {
     for (const sql of stmts) {
         await db.query(sql);
     }
+    // Идемпотентные миграции существующих БД колледжей.
+    try {
+        await db.query("ALTER TABLE users MODIFY COLUMN role ENUM('admin','curator','student') NOT NULL DEFAULT 'student'");
+    } catch (e) { /* enum уже актуальный */ }
 }
 testConnection();
 
@@ -327,6 +331,14 @@ function requireAdmin(req, res, next) {
 function requireSuperAdmin(req, res, next) {
     if (req.user.role !== 'super_admin') {
         return res.status(403).json({ error: 'Доступ запрещён. Требуются права супер-администратора.' });
+    }
+    next();
+}
+
+// Middleware: персонал колледжа (психолог-админ или куратор) — для чтения.
+function requireStaff(req, res, next) {
+    if (req.user.role !== 'admin' && req.user.role !== 'curator') {
+        return res.status(403).json({ error: 'Доступ запрещён' });
     }
     next();
 }
@@ -398,7 +410,7 @@ app.post('/api/auth/login', async (req, res) => {
         }
 
         const token = jwt.sign(
-            { id: user.id, role: user.role, fullName: user.full_name, tenantDb: tenant.db_name, tenantCode: tenant.code },
+            { id: user.id, role: user.role, fullName: user.full_name, tenantDb: tenant.db_name, tenantCode: tenant.code, group: user.group_name },
             JWT_SECRET,
             { expiresIn: '24h' }
         );
@@ -465,9 +477,11 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
 // ============================================
 
 // Получение списка всех студентов
-app.get('/api/students', authenticateToken, requireAdmin, async (req, res) => {
+app.get('/api/students', authenticateToken, requireStaff, async (req, res) => {
     try {
-        const { group, search } = req.query;
+        const { search } = req.query;
+        // Куратор видит только свою группу; админ — все (или по фильтру).
+        const group = req.user.role === 'curator' ? req.user.group : req.query.group;
         let query = `
             SELECT u.id, u.username, u.full_name, u.birth_date, u.group_name,
                    u.email, u.phone, u.created_at,
@@ -477,7 +491,11 @@ app.get('/api/students', authenticateToken, requireAdmin, async (req, res) => {
             WHERE u.role = 'student' AND u.is_active = TRUE
         `;
         const params = [];
-        
+
+        if (req.user.role === 'curator' && !group) {
+            // Куратор без назначенной группы не видит студентов.
+            return res.json([]);
+        }
         if (group) {
             query += ' AND u.group_name = ?';
             params.push(group);
@@ -703,6 +721,61 @@ app.post('/api/students/import', authenticateToken, requireAdmin, async (req, re
     } catch (error) {
         console.error('Ошибка импорта студентов:', error);
         res.status(500).json({ error: 'Ошибка импорта' });
+    }
+});
+
+// ============================================
+// API РОУТЫ - КУРАТОРЫ (для админа-психолога колледжа)
+// ============================================
+
+// Список кураторов колледжа
+app.get('/api/curators', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const [rows] = await req.db.execute(
+            "SELECT id, username, full_name, group_name, created_at FROM users WHERE role = 'curator' AND is_active = TRUE ORDER BY full_name"
+        );
+        res.json(rows);
+    } catch (error) {
+        console.error('Ошибка списка кураторов:', error);
+        res.status(500).json({ error: 'Ошибка загрузки кураторов' });
+    }
+});
+
+// Создание куратора (read-only по своей группе)
+app.post('/api/curators', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { username, password, full_name, group_name } = req.body || {};
+        if (!username || !password || !full_name || !group_name) {
+            return res.status(400).json({ error: 'Укажите логин, пароль, ФИО и группу' });
+        }
+        if (String(password).length < 8) {
+            return res.status(400).json({ error: 'Пароль должен быть не короче 8 символов' });
+        }
+        const hash = await bcrypt.hash(password, 10);
+        const [result] = await req.db.execute(
+            "INSERT INTO users (username, password, full_name, role, group_name) VALUES (?, ?, ?, 'curator', ?)",
+            [username, hash, full_name, group_name]
+        );
+        await logAction(req.db, req.user.id, 'CREATE_CURATOR', 'user', result.insertId, { group: group_name });
+        res.status(201).json({ message: 'Куратор создан', id: result.insertId });
+    } catch (error) {
+        console.error('Ошибка создания куратора:', error);
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({ error: 'Пользователь с таким логином уже существует' });
+        }
+        res.status(500).json({ error: 'Ошибка создания куратора' });
+    }
+});
+
+// Удаление куратора (мягкое)
+app.delete('/api/curators/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await req.db.execute("UPDATE users SET is_active = FALSE WHERE id = ? AND role = 'curator'", [req.params.id]);
+        await logAction(req.db, req.user.id, 'DELETE_CURATOR', 'user', parseInt(req.params.id));
+        res.json({ message: 'Куратор удалён' });
+    } catch (error) {
+        console.error('Ошибка удаления куратора:', error);
+        res.status(500).json({ error: 'Ошибка удаления' });
     }
 });
 
@@ -1089,10 +1162,12 @@ app.post('/api/results/complete', authenticateToken, async (req, res) => {
 // ============================================
 
 // Получение всех результатов
-app.get('/api/results', authenticateToken, requireAdmin, async (req, res) => {
+app.get('/api/results', authenticateToken, requireStaff, async (req, res) => {
     try {
-        const { groupId, questionnaireId, startDate, endDate } = req.query;
-        
+        const { questionnaireId, startDate, endDate } = req.query;
+        // Куратор видит результаты только своей группы.
+        const groupId = req.user.role === 'curator' ? req.user.group : req.query.groupId;
+
         let query = `
             SELECT r.id, r.score, r.status, r.completed_at, r.answers,
                    u.id as user_id, u.full_name, u.group_name,
@@ -1103,7 +1178,10 @@ app.get('/api/results', authenticateToken, requireAdmin, async (req, res) => {
             WHERE 1=1
         `;
         const params = [];
-        
+
+        if (req.user.role === 'curator' && !groupId) {
+            return res.json([]);
+        }
         if (groupId) {
             query += ' AND u.group_name = ?';
             params.push(groupId);
@@ -1504,6 +1582,10 @@ app.get('/student', (req, res) => {
 
 app.get('/platform', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'platform.html'));
+});
+
+app.get('/curator', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'curator.html'));
 });
 
 // Запуск сервера

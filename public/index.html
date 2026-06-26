@@ -128,13 +128,7 @@
                 localStorage.setItem('user', JSON.stringify(data.user));
 
                 // Перенаправление по роли
-                if (data.user.role === 'super_admin') {
-                    window.location.href = '/platform';
-                } else if (data.user.role === 'admin') {
-                    window.location.href = '/admin';
-                } else {
-                    window.location.href = '/student';
-                }
+                redirectByRole(data.user.role);
 
             } catch (error) {
                 errorMsg.textContent = error.message;
@@ -153,16 +147,16 @@
             const user = localStorage.getItem('user');
             
             if (token && user) {
-                const userData = JSON.parse(user);
-                if (userData.role === 'super_admin') {
-                    window.location.href = '/platform';
-                } else if (userData.role === 'admin') {
-                    window.location.href = '/admin';
-                } else {
-                    window.location.href = '/student';
-                }
+                redirectByRole(JSON.parse(user).role);
             }
         });
+
+        function redirectByRole(role) {
+            if (role === 'super_admin') window.location.href = '/platform';
+            else if (role === 'admin') window.location.href = '/admin';
+            else if (role === 'curator') window.location.href = '/curator';
+            else window.location.href = '/student';
+        }
     </script>
 </body>
 </html>

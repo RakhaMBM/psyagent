@@ -67,7 +67,10 @@
 - ⏳ **Сменить дефолтный пароль супер-админа** `superadmin/superadmin` (через `/platform`
    → смена пароля, либо `UPDATE psych_control.platform_admins`). Дефолтный `admin` колледжа
    по умолчанию уже сменён.
-- ⏳ **Роли:** куратор (read-only по своей группе).
+- ✅ **Роли: куратор** (read-only по своей группе) — сделано: `role` enum += `curator`
+   (+ идемпотентный ALTER в `ensureTenantSchema`), `requireStaff`, scope `/api/students`
+   и `/api/results` по группе куратора; CRUD `/api/curators` (админ); кабинет `public/curator.html`
+   (`/curator`); вход куратора редиректит на `/curator`.
 - ⏳ Деактивация колледжа в UI (эндпоинт `PATCH /api/platform/tenants/:id` уже есть).
 
 ## Важно

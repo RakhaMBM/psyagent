@@ -32,6 +32,11 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showSection('curators')">
+                            <i class="bi bi-eyeglasses me-1"></i><span data-i18n="nav.curators">Кураторы</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="#" onclick="showSection('tests')">
                             <i class="bi bi-journal-text me-1"></i><span data-i18n="nav.tests">Тесты</span>
                         </a>
@@ -240,6 +245,64 @@
                                 <tr><td colspan="6" class="text-center py-4" data-i18n="common.loading">Загрузка...</td></tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Секция: Кураторы -->
+        <section id="section-curators" class="p-4 d-none">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4><i class="bi bi-eyeglasses me-2"></i><span data-i18n="nav.curators">Кураторы</span></h4>
+            </div>
+            <p class="text-muted" data-i18n="curators.hint">Куратор видит студентов и результаты только своей группы (без редактирования).</p>
+            <div class="row g-4">
+                <div class="col-lg-7">
+                    <div class="card">
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th data-i18n="table.fio">ФИО</th>
+                                            <th data-i18n="field.login">Логин</th>
+                                            <th data-i18n="table.group">Группа</th>
+                                            <th data-i18n="common.actions">Действия</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="curatorsBody">
+                                        <tr><td colspan="4" class="text-center py-4 text-muted" data-i18n="common.loading">Загрузка...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-5">
+                    <div class="card">
+                        <div class="card-body">
+                            <h6 class="fw-bold mb-3"><i class="bi bi-person-plus me-2"></i><span data-i18n="curators.add">Добавить куратора</span></h6>
+                            <form id="curatorForm">
+                                <div class="mb-2">
+                                    <label class="form-label"><span data-i18n="field.fio">ФИО</span> *</label>
+                                    <input type="text" class="form-control" name="full_name" required>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label"><span data-i18n="table.group">Группа</span> *</label>
+                                    <input type="text" class="form-control" name="group_name" list="curatorGroups" required>
+                                    <datalist id="curatorGroups"></datalist>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label"><span data-i18n="field.login">Логин</span> *</label>
+                                    <input type="text" class="form-control" name="username" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label"><span data-i18n="field.password">Пароль</span> * <span class="text-muted small">(<span data-i18n="pw.min">Минимум 8 символов</span>)</span></label>
+                                    <input type="text" class="form-control" name="password" minlength="8" required>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100" data-i18n="common.save">Сохранить</button>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -692,6 +755,70 @@
             if (sectionName === 'dashboard') loadDashboardStats();
             if (sectionName === 'results') loadResults();
             if (sectionName === 'methodologies') loadMethodologiesList();
+            if (sectionName === 'curators') loadCurators();
+        }
+
+        // ===== Кураторы =====
+        async function loadCurators() {
+            // Подсказка групп для формы
+            try {
+                const groups = await (await fetch('/api/groups', { headers: { 'Authorization': `Bearer ${token}` } })).json();
+                const dl = document.getElementById('curatorGroups');
+                if (dl && Array.isArray(groups)) dl.innerHTML = groups.map(g => `<option value="${g.group_name}">`).join('');
+            } catch (e) {}
+
+            const tbody = document.getElementById('curatorsBody');
+            try {
+                const res = await fetch('/api/curators', { headers: { 'Authorization': `Bearer ${token}` } });
+                const raw = await res.json();
+                const list = Array.isArray(raw) ? raw : [];
+                if (list.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-muted">${t('curators.empty')}</td></tr>`;
+                    return;
+                }
+                tbody.innerHTML = list.map(c => `
+                    <tr>
+                        <td class="fw-semibold">${c.full_name}</td>
+                        <td><code>${c.username}</code></td>
+                        <td>${c.group_name || '-'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteCurator(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
+                        </td>
+                    </tr>`).join('');
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-danger">${t('msg.error')}</td></tr>`;
+            }
+        }
+
+        document.getElementById('curatorForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const data = Object.fromEntries(new FormData(this).entries());
+            if ((data.password || '').length < 8) { alert(t('pw.min')); return; }
+            try {
+                const res = await fetch('/api/curators', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+                if (!res.ok) throw new Error(result.error || t('msg.error'));
+                this.reset();
+                loadCurators();
+                alert(t('curators.created'));
+            } catch (err) {
+                alert(t('msg.error') + ': ' + err.message);
+            }
+        });
+
+        async function deleteCurator(id) {
+            if (!confirm(t('curators.confirm_delete'))) return;
+            try {
+                const res = await fetch(`/api/curators/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+                if (!res.ok) throw new Error(await res.text());
+                loadCurators();
+            } catch (e) {
+                alert(t('msg.error') + ': ' + e.message);
+            }
         }
 
         // ============================================
