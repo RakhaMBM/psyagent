@@ -33,10 +33,11 @@
                                     <tr>
                                         <th>Код</th><th>Название</th><th>БД</th>
                                         <th class="text-center">Студентов</th><th class="text-center">Статус</th>
+                                        <th class="text-end">Действие</th>
                                     </tr>
                                 </thead>
                                 <tbody id="tenantsTable">
-                                    <tr><td colspan="5" class="text-center text-muted py-4">Загрузка…</td></tr>
+                                    <tr><td colspan="6" class="text-center text-muted py-4">Загрузка…</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -158,7 +159,7 @@
 
                 const tbody = document.getElementById('tenantsTable');
                 if (!Array.isArray(list) || list.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Нет колледжей</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Нет колледжей</td></tr>';
                     return;
                 }
                 tbody.innerHTML = list.map(t => `
@@ -172,10 +173,16 @@
                                 ? '<span class="badge bg-success">активен</span>'
                                 : '<span class="badge bg-secondary">отключён</span>'}
                         </td>
+                        <td class="text-end">
+                            ${t.code === 'default' ? '<span class="text-muted small">—</span>' :
+                                (t.is_active
+                                    ? `<button class="btn btn-sm btn-outline-secondary" onclick="toggleTenant(${t.id}, false)"><i class="bi bi-pause-circle me-1"></i>Отключить</button>`
+                                    : `<button class="btn btn-sm btn-outline-success" onclick="toggleTenant(${t.id}, true)"><i class="bi bi-play-circle me-1"></i>Включить</button>`)}
+                        </td>
                     </tr>`).join('');
             } catch (e) {
                 document.getElementById('tenantsTable').innerHTML =
-                    '<tr><td colspan="5" class="text-center text-danger py-4">Ошибка загрузки</td></tr>';
+                    '<tr><td colspan="6" class="text-center text-danger py-4">Ошибка загрузки</td></tr>';
             }
         }
 
@@ -272,6 +279,24 @@
         }
 
         document.getElementById('supportTenant').addEventListener('change', loadTenantUsers);
+
+        async function toggleTenant(id, makeActive) {
+            if (!confirm(makeActive ? 'Включить колледж?' : 'Отключить колледж? Его пользователи не смогут войти.')) return;
+            try {
+                const res = await fetch('/api/platform/tenants/' + id, {
+                    method: 'PATCH',
+                    headers: authHeaders,
+                    body: JSON.stringify({ is_active: makeActive })
+                });
+                if (!res.ok) {
+                    const d = await res.json().catch(() => ({}));
+                    throw new Error(d.error || 'Ошибка');
+                }
+                loadTenants();
+            } catch (err) {
+                alert(err.message);
+            }
+        }
 
         loadTenants();
     </script>
