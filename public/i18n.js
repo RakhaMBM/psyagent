@@ -182,6 +182,8 @@
             'unit.years': 'лет',
             // Вход
             'login.subtitle': 'Вход',
+            'login.college': 'Код колледжа',
+            'login.college_ph': 'Оставьте пустым для входа по умолчанию',
             'login.username': 'Логин',
             'login.password': 'Пароль',
             'login.username_ph': 'Введите логин',
@@ -423,6 +425,8 @@
             'amodal.assign': 'Тағайындау',
             'unit.years': 'жас',
             'login.subtitle': 'Кіру',
+            'login.college': 'Колледж коды',
+            'login.college_ph': 'Әдепкі кіру үшін бос қалдырыңыз',
             'login.username': 'Логин',
             'login.password': 'Құпиясөз',
             'login.username_ph': 'Логинді енгізіңіз',

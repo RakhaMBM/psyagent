@@ -30,6 +30,14 @@
                         <!-- Форма входа -->
                         <form id="loginForm">
                             <div class="mb-3">
+                                <label for="college" class="form-label" data-i18n="login.college">Код колледжа</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-building"></i></span>
+                                    <input type="text" class="form-control" id="college" data-i18n-ph="login.college_ph" placeholder="Оставьте пустым для входа по умолчанию" autocomplete="off">
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
                                 <label for="username" class="form-label" data-i18n="login.username">Логин</label>
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="bi bi-person"></i></span>
@@ -104,7 +112,8 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         username: document.getElementById('username').value,
-                        password: document.getElementById('password').value
+                        password: document.getElementById('password').value,
+                        college: document.getElementById('college').value.trim()
                     })
                 });
 
@@ -119,7 +128,9 @@
                 localStorage.setItem('user', JSON.stringify(data.user));
 
                 // Перенаправление по роли
-                if (data.user.role === 'admin') {
+                if (data.user.role === 'super_admin') {
+                    window.location.href = '/platform';
+                } else if (data.user.role === 'admin') {
                     window.location.href = '/admin';
                 } else {
                     window.location.href = '/student';
@@ -143,7 +154,9 @@
             
             if (token && user) {
                 const userData = JSON.parse(user);
-                if (userData.role === 'admin') {
+                if (userData.role === 'super_admin') {
+                    window.location.href = '/platform';
+                } else if (userData.role === 'admin') {
                     window.location.href = '/admin';
                 } else {
                     window.location.href = '/student';

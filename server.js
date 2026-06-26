@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const mysql2 = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
@@ -67,8 +68,25 @@ async function testConnection() {
         conn.release();
         await ensureSchema(pool);
         await ensureControlSchema();
+        await syncTenantSchemas();
     } catch (error) {
         console.error(' Ошибка подключения к БД:', error.message);
+    }
+}
+
+// Накатывает схему на ВСЕ активные колледжи при старте (на случай дрейфа схемы).
+async function syncTenantSchemas() {
+    if (!controlPool) return;
+    try {
+        const [tenants] = await controlPool.execute(
+            'SELECT db_name FROM tenants WHERE is_active = TRUE'
+        );
+        for (const t of tenants) {
+            await ensureTenantSchema(tenantPool(t.db_name));
+        }
+        console.log(` Схемы колледжей синхронизированы (${tenants.length}).`);
+    } catch (e) {
+        console.error('Ошибка синхронизации схем колледжей:', e.message);
     }
 }
 
@@ -158,6 +176,119 @@ async function ensureSchema(db) {
         console.error('Ошибка создания таблиц:', e.message);
     }
 }
+
+// Полная схема БД колледжа (все таблицы IF NOT EXISTS). Используется при
+// провижининге нового колледжа и при старте для авто-миграции существующих.
+// Индексы заданы инлайн в CREATE TABLE, чтобы повторный запуск не падал.
+async function ensureTenantSchema(db) {
+    const stmts = [
+        `CREATE TABLE IF NOT EXISTS users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            username VARCHAR(100) UNIQUE NOT NULL,
+            password VARCHAR(255) NOT NULL,
+            full_name VARCHAR(255) NOT NULL,
+            role ENUM('admin','student') NOT NULL DEFAULT 'student',
+            birth_date DATE,
+            group_name VARCHAR(100),
+            email VARCHAR(150),
+            phone VARCHAR(20),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            is_active BOOLEAN DEFAULT TRUE,
+            KEY idx_users_role (role),
+            KEY idx_users_group (group_name)
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+        `CREATE TABLE IF NOT EXISTS student_profiles (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT UNIQUE NOT NULL,
+            family_type ENUM('full','single_parent','guardian','other') NOT NULL,
+            lives_with TEXT,
+            school VARCHAR(255),
+            home_address VARCHAR(500),
+            psychologist_notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+        `CREATE TABLE IF NOT EXISTS questionnaires (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            title VARCHAR(255) NOT NULL,
+            description TEXT,
+            created_by INT NOT NULL,
+            is_active BOOLEAN DEFAULT TRUE,
+            target_groups JSON,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+        `CREATE TABLE IF NOT EXISTS questions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            questionnaire_id INT NOT NULL,
+            question_text TEXT NOT NULL,
+            question_type ENUM('single','multiple','scale','text') NOT NULL,
+            options JSON,
+            scale_min INT DEFAULT 1,
+            scale_max INT DEFAULT 5,
+            scale_labels JSON,
+            is_required BOOLEAN DEFAULT TRUE,
+            order_index INT DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (questionnaire_id) REFERENCES questionnaires(id) ON DELETE CASCADE
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+        `CREATE TABLE IF NOT EXISTS results (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            questionnaire_id INT NOT NULL,
+            answers JSON NOT NULL,
+            score DECIMAL(10,2),
+            status ENUM('in_progress','completed') DEFAULT 'in_progress',
+            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (questionnaire_id) REFERENCES questionnaires(id) ON DELETE CASCADE,
+            KEY idx_results_user (user_id),
+            KEY idx_results_questionnaire (questionnaire_id)
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+        `CREATE TABLE IF NOT EXISTS assignments (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            questionnaire_id INT NOT NULL,
+            user_id INT NOT NULL,
+            assigned_by INT NOT NULL,
+            due_date DATE,
+            status ENUM('assigned','started','completed','expired') DEFAULT 'assigned',
+            assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (questionnaire_id) REFERENCES questionnaires(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (assigned_by) REFERENCES users(id),
+            KEY idx_assignments_user (user_id, status)
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+        `CREATE TABLE IF NOT EXISTS methodologies (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            meth_key VARCHAR(100) UNIQUE,
+            title VARCHAR(255) NOT NULL,
+            data JSON NOT NULL,
+            created_by INT,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+        `CREATE TABLE IF NOT EXISTS audit_log (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT,
+            action VARCHAR(100) NOT NULL,
+            entity_type VARCHAR(50),
+            entity_id INT,
+            details JSON,
+            ip_address VARCHAR(45),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+    ];
+    for (const sql of stmts) {
+        await db.query(sql);
+    }
+}
 testConnection();
 
 // ============================================
@@ -188,6 +319,14 @@ function authenticateToken(req, res, next) {
 function requireAdmin(req, res, next) {
     if (req.user.role !== 'admin') {
         return res.status(403).json({ error: 'Доступ запрещён. Требуются права администратора.' });
+    }
+    next();
+}
+
+// Middleware проверки супер-админа (владелец SaaS)
+function requireSuperAdmin(req, res, next) {
+    if (req.user.role !== 'super_admin') {
+        return res.status(403).json({ error: 'Доступ запрещён. Требуются права супер-администратора.' });
     }
     next();
 }
@@ -1140,6 +1279,136 @@ app.delete('/api/methodologies/:id', authenticateToken, requireAdmin, async (req
 });
 
 // ============================================
+// API РОУТЫ - СМЕНА ПАРОЛЯ
+// ============================================
+
+// Смена собственного пароля (студент, психолог или супер-админ)
+app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body || {};
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ error: 'Укажите текущий и новый пароль' });
+        }
+        if (String(newPassword).length < 8) {
+            return res.status(400).json({ error: 'Новый пароль должен быть не короче 8 символов' });
+        }
+
+        // Супер-админ хранится в control-БД, остальные — в БД своего колледжа.
+        if (req.user.role === 'super_admin') {
+            if (!controlPool) return res.status(503).json({ error: 'Control-БД недоступна' });
+            const [rows] = await controlPool.execute('SELECT * FROM platform_admins WHERE id = ?', [req.user.id]);
+            if (rows.length === 0 || !(await bcrypt.compare(currentPassword, rows[0].password))) {
+                return res.status(401).json({ error: 'Текущий пароль неверный' });
+            }
+            const hash = await bcrypt.hash(newPassword, 10);
+            await controlPool.execute('UPDATE platform_admins SET password = ? WHERE id = ?', [hash, req.user.id]);
+            return res.json({ message: 'Пароль изменён' });
+        }
+
+        const [rows] = await req.db.execute('SELECT * FROM users WHERE id = ?', [req.user.id]);
+        if (rows.length === 0 || !(await bcrypt.compare(currentPassword, rows[0].password))) {
+            return res.status(401).json({ error: 'Текущий пароль неверный' });
+        }
+        const hash = await bcrypt.hash(newPassword, 10);
+        await req.db.execute('UPDATE users SET password = ? WHERE id = ?', [hash, req.user.id]);
+        await logAction(req.db, req.user.id, 'CHANGE_PASSWORD', 'user', req.user.id);
+        res.json({ message: 'Пароль изменён' });
+    } catch (error) {
+        console.error('Ошибка смены пароля:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// ============================================
+// API РОУТЫ - ПЛАТФОРМА (СУПЕР-АДМИН): провижининг колледжей
+// ============================================
+
+// Список колледжей с числом студентов
+app.get('/api/platform/tenants', authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+        const [tenants] = await controlPool.execute(
+            'SELECT id, code, name, db_name, is_active, created_at FROM tenants ORDER BY created_at'
+        );
+        // Считаем студентов по каждому колледжу (best-effort, без падения на недоступной БД).
+        for (const t of tenants) {
+            try {
+                const [[row]] = await tenantPool(t.db_name).execute(
+                    "SELECT COUNT(*) AS n FROM users WHERE role = 'student' AND is_active = TRUE"
+                );
+                t.student_count = row.n;
+            } catch (_) {
+                t.student_count = null;
+            }
+        }
+        res.json(tenants);
+    } catch (error) {
+        console.error('Ошибка списка колледжей:', error);
+        res.status(500).json({ error: 'Ошибка загрузки колледжей' });
+    }
+});
+
+// Создание колледжа: новая БД + схема + первый админ-психолог
+app.post('/api/platform/tenants', authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+        const { code, name, adminUsername, adminPassword, adminFullName } = req.body || {};
+        const safeCode = safeDbName(String(code || '').toLowerCase());
+
+        if (!safeCode || !name || !adminUsername || !adminPassword) {
+            return res.status(400).json({ error: 'Укажите код, название колледжа, логин и пароль администратора' });
+        }
+        if (['platform', 'default'].includes(safeCode)) {
+            return res.status(400).json({ error: 'Код колледжа зарезервирован' });
+        }
+        if (String(adminPassword).length < 8) {
+            return res.status(400).json({ error: 'Пароль администратора должен быть не короче 8 символов' });
+        }
+
+        const [existing] = await controlPool.execute('SELECT id FROM tenants WHERE code = ?', [safeCode]);
+        if (existing.length > 0) {
+            return res.status(400).json({ error: 'Колледж с таким кодом уже существует' });
+        }
+
+        const dbName = safeDbName('psych_t_' + safeCode);
+
+        // 1. Создаём БД колледжа и накатываем схему.
+        await adminPool.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+        const db = tenantPool(dbName);
+        await ensureTenantSchema(db);
+
+        // 2. Первый админ-психолог колледжа.
+        const hash = await bcrypt.hash(adminPassword, 10);
+        await db.execute(
+            'INSERT INTO users (username, password, full_name, role) VALUES (?, ?, ?, ?)',
+            [adminUsername, hash, adminFullName || 'Администратор', 'admin']
+        );
+
+        // 3. Регистрируем колледж в control-БД.
+        await controlPool.execute(
+            'INSERT INTO tenants (code, name, db_name) VALUES (?, ?, ?)',
+            [safeCode, name, dbName]
+        );
+
+        res.status(201).json({ message: 'Колледж создан', code: safeCode, db_name: dbName });
+    } catch (error) {
+        console.error('Ошибка создания колледжа:', error);
+        res.status(500).json({ error: 'Ошибка создания колледжа' });
+    }
+});
+
+// Активация/деактивация колледжа
+app.patch('/api/platform/tenants/:id', authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+        const { is_active } = req.body || {};
+        await controlPool.execute('UPDATE tenants SET is_active = ? WHERE id = ? AND code <> ?',
+            [is_active ? 1 : 0, req.params.id, 'default']);
+        res.json({ message: 'Колледж обновлён' });
+    } catch (error) {
+        console.error('Ошибка обновления колледжа:', error);
+        res.status(500).json({ error: 'Ошибка обновления колледжа' });
+    }
+});
+
+// ============================================
 // ГЛАВНАЯ СТРАНИЦА
 // ============================================
 
@@ -1153,6 +1422,10 @@ app.get('/admin', (req, res) => {
 
 app.get('/student', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'student.html'));
+});
+
+app.get('/platform', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'platform.html'));
 });
 
 // Запуск сервера
