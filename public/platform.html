@@ -44,6 +44,41 @@
                 </div>
             </div>
 
+            <!-- Сброс пароля пользователя (поддержка) -->
+            <div class="col-12">
+                <div class="card shadow-sm border-0 rounded-4">
+                    <div class="card-body p-4">
+                        <h5 class="fw-bold mb-3"><i class="bi bi-key me-2"></i>Сброс пароля пользователя <span class="text-muted small">(поддержка)</span></h5>
+                        <div class="row g-2 align-items-end mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1">Колледж</label>
+                                <select class="form-select" id="supportTenant">
+                                    <option value="">— выберите колледж —</option>
+                                </select>
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label small mb-1">Поиск пользователя</label>
+                                <input type="text" class="form-control" id="supportSearch" placeholder="ФИО или логин">
+                            </div>
+                            <div class="col-md-3">
+                                <button class="btn btn-outline-primary w-100" onclick="loadTenantUsers()"><i class="bi bi-search me-1"></i>Найти</button>
+                            </div>
+                        </div>
+                        <div id="supportMsg"></div>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead>
+                                    <tr><th>ФИО</th><th>Логин</th><th>Роль</th><th>Группа</th><th class="text-end">Действие</th></tr>
+                                </thead>
+                                <tbody id="supportUsers">
+                                    <tr><td colspan="5" class="text-center text-muted py-3">Выберите колледж</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Создание колледжа -->
             <div class="col-lg-5">
                 <div class="card shadow-sm border-0 rounded-4">
@@ -114,6 +149,13 @@
                 const res = await fetch('/api/platform/tenants', { headers: authHeaders });
                 if (res.status === 401 || res.status === 403) return logout();
                 const list = await res.json();
+                // Заполняем выпадающий список колледжей для панели поддержки
+                const sel = document.getElementById('supportTenant');
+                const prev = sel.value;
+                sel.innerHTML = '<option value="">— выберите колледж —</option>' +
+                    (Array.isArray(list) ? list.map(t => `<option value="${t.id}">${esc(t.name)} (${esc(t.code)})</option>`).join('') : '');
+                if (prev) sel.value = prev;
+
                 const tbody = document.getElementById('tenantsTable');
                 if (!Array.isArray(list) || list.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Нет колледжей</td></tr>';
@@ -169,6 +211,67 @@
                 btn.disabled = false;
             }
         });
+
+        const roleLabel = (r) => ({ admin: 'Психолог', curator: 'Куратор', student: 'Студент' }[r] || r);
+
+        async function loadTenantUsers() {
+            const tenantId = document.getElementById('supportTenant').value;
+            const tbody = document.getElementById('supportUsers');
+            document.getElementById('supportMsg').innerHTML = '';
+            if (!tenantId) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Выберите колледж</td></tr>';
+                return;
+            }
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Загрузка…</td></tr>';
+            try {
+                const search = encodeURIComponent(document.getElementById('supportSearch').value.trim());
+                const res = await fetch(`/api/platform/tenants/${tenantId}/users?search=${search}`, { headers: authHeaders });
+                if (res.status === 401 || res.status === 403) return logout();
+                const users = await res.json();
+                if (!Array.isArray(users) || users.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Пользователи не найдены</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = users.map(u => `
+                    <tr>
+                        <td>${esc(u.full_name)}${u.is_active ? '' : ' <span class="badge bg-secondary">отключён</span>'}</td>
+                        <td><code>${esc(u.username)}</code></td>
+                        <td>${esc(roleLabel(u.role))}</td>
+                        <td class="small text-muted">${esc(u.group_name || '—')}</td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-danger" onclick="resetUserPassword(${tenantId}, ${u.id}, '${esc(u.username).replace(/'/g, "\\'")}')">
+                                <i class="bi bi-key me-1"></i>Сбросить пароль
+                            </button>
+                        </td>
+                    </tr>`).join('');
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">Ошибка загрузки</td></tr>';
+            }
+        }
+
+        async function resetUserPassword(tenantId, userId, username) {
+            const newPassword = prompt(`Новый пароль для «${username}» (минимум 8 символов):`);
+            if (newPassword == null) return;
+            if (newPassword.length < 8) {
+                alert('Пароль должен быть не короче 8 символов');
+                return;
+            }
+            try {
+                const res = await fetch('/api/platform/reset-password', {
+                    method: 'POST',
+                    headers: authHeaders,
+                    body: JSON.stringify({ tenantId, userId, newPassword })
+                });
+                const data = await res.json();
+                const msg = document.getElementById('supportMsg');
+                if (!res.ok) throw new Error(data.error || 'Ошибка');
+                msg.innerHTML = `<div class="alert alert-success py-2">${esc(data.message)}</div>`;
+            } catch (err) {
+                document.getElementById('supportMsg').innerHTML = `<div class="alert alert-danger py-2">${esc(err.message)}</div>`;
+            }
+        }
+
+        document.getElementById('supportTenant').addEventListener('change', loadTenantUsers);
 
         loadTenants();
     </script>

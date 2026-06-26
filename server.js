@@ -612,6 +612,30 @@ app.delete('/api/students/:id', authenticateToken, requireAdmin, async (req, res
     }
 });
 
+// Сброс пароля студента админом (только в рамках своего колледжа — req.db).
+app.post('/api/students/:id/reset-password', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { newPassword } = req.body || {};
+        if (!newPassword || String(newPassword).length < 8) {
+            return res.status(400).json({ error: 'Пароль должен быть не короче 8 символов' });
+        }
+        const [[student]] = await req.db.execute(
+            "SELECT id, username FROM users WHERE id = ? AND role = 'student'",
+            [req.params.id]
+        );
+        if (!student) {
+            return res.status(404).json({ error: 'Студент не найден' });
+        }
+        const hash = await bcrypt.hash(newPassword, 10);
+        await req.db.execute('UPDATE users SET password = ? WHERE id = ?', [hash, req.params.id]);
+        await logAction(req.db, req.user.id, 'RESET_STUDENT_PASSWORD', 'user', parseInt(req.params.id), { username: student.username });
+        res.json({ message: 'Пароль студента изменён' });
+    } catch (error) {
+        console.error('Ошибка сброса пароля студента:', error);
+        res.status(500).json({ error: 'Ошибка сброса пароля' });
+    }
+});
+
 // Массовый импорт студентов (данные парсятся из Excel на клиенте и приходят массивом)
 app.post('/api/students/import', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -1405,6 +1429,60 @@ app.patch('/api/platform/tenants/:id', authenticateToken, requireSuperAdmin, asy
     } catch (error) {
         console.error('Ошибка обновления колледжа:', error);
         res.status(500).json({ error: 'Ошибка обновления колледжа' });
+    }
+});
+
+// Список пользователей выбранного колледжа (для поддержки: поиск + сброс пароля).
+app.get('/api/platform/tenants/:id/users', authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+        const [[tenant]] = await controlPool.execute('SELECT * FROM tenants WHERE id = ?', [req.params.id]);
+        if (!tenant) return res.status(404).json({ error: 'Колледж не найден' });
+
+        const db = tenantPool(tenant.db_name);
+        let query = 'SELECT id, username, full_name, role, group_name, is_active FROM users';
+        const params = [];
+        const search = String(req.query.search || '').trim();
+        if (search) {
+            query += ' WHERE full_name LIKE ? OR username LIKE ?';
+            params.push(`%${search}%`, `%${search}%`);
+        }
+        query += ' ORDER BY FIELD(role, "admin", "curator", "student"), full_name LIMIT 200';
+        const [users] = await db.execute(query, params);
+        res.json(users);
+    } catch (error) {
+        console.error('Ошибка списка пользователей колледжа:', error);
+        res.status(500).json({ error: 'Ошибка загрузки пользователей' });
+    }
+});
+
+// Сброс пароля ЛЮБОГО пользователя в ЛЮБОМ колледже (поддержка). Только супер-админ.
+app.post('/api/platform/reset-password', authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+        const { tenantId, userId, newPassword } = req.body || {};
+        if (!tenantId || !userId || !newPassword) {
+            return res.status(400).json({ error: 'Укажите колледж, пользователя и новый пароль' });
+        }
+        if (String(newPassword).length < 8) {
+            return res.status(400).json({ error: 'Пароль должен быть не короче 8 символов' });
+        }
+
+        const [[tenant]] = await controlPool.execute('SELECT * FROM tenants WHERE id = ?', [tenantId]);
+        if (!tenant) return res.status(404).json({ error: 'Колледж не найден' });
+
+        const db = tenantPool(tenant.db_name);
+        const [[targetUser]] = await db.execute('SELECT id, username FROM users WHERE id = ?', [userId]);
+        if (!targetUser) return res.status(404).json({ error: 'Пользователь не найден' });
+
+        const hash = await bcrypt.hash(newPassword, 10);
+        await db.execute('UPDATE users SET password = ? WHERE id = ?', [hash, userId]);
+        // Аудит в БД колледжа (актор не из users этого колледжа -> user_id = null, контекст в details).
+        await logAction(db, null, 'SUPPORT_RESET_PASSWORD', 'user', parseInt(userId), {
+            bySuperAdmin: req.user.id, superAdminName: req.user.fullName, username: targetUser.username
+        });
+        res.json({ message: `Пароль пользователя «${targetUser.username}» сброшен` });
+    } catch (error) {
+        console.error('Ошибка сброса пароля (поддержка):', error);
+        res.status(500).json({ error: 'Ошибка сброса пароля' });
     }
 });
 

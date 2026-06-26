@@ -58,6 +58,9 @@
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li><span class="dropdown-item-text text-muted small" data-i18n="role.psychologist">Педагог-психолог</span></li>
                             <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" onclick="openSelfPassword(); return false;">
+                                <i class="bi bi-key me-1"></i><span data-i18n="pw.change_own">Сменить пароль</span>
+                            </a></li>
                             <li><a class="dropdown-item text-danger" href="#" onclick="logout()">
                                 <i class="bi bi-box-arrow-right me-1"></i><span data-i18n="common.logout">Выход</span>
                             </a></li>
@@ -616,6 +619,36 @@
         </div>
     </div>
 
+    <!-- Модальное окно: Пароль (своя смена / сброс студенту) -->
+    <div class="modal fade" id="passwordModal" tabindex="-1">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="pwModalTitle" data-i18n="pw.change_own">Сменить пароль</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="passwordForm">
+                    <div class="modal-body">
+                        <div id="pwError" class="alert alert-danger d-none py-2 small"></div>
+                        <div class="mb-3" id="pwCurrentWrap">
+                            <label class="form-label" data-i18n="pw.current">Текущий пароль</label>
+                            <input type="password" class="form-control" id="pwCurrent" autocomplete="current-password">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label" data-i18n="pw.new">Новый пароль</label>
+                            <input type="password" class="form-control" id="pwNew" minlength="8" autocomplete="new-password">
+                            <div class="form-text" data-i18n="pw.min">Минимум 8 символов</div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Отмена</button>
+                        <button type="submit" class="btn btn-primary" data-i18n="common.save">Сохранить</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -1096,6 +1129,9 @@
                                 </button>
                                 <button class="btn btn-outline-primary" onclick="editStudent(${s.id})" title="${t('common.edit')}">
                                     <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-warning" onclick="openResetStudentPassword(${s.id}, '${(s.full_name || '').replace(/'/g, "\\'")}')" title="${t('pw.reset_student')}">
+                                    <i class="bi bi-key"></i>
                                 </button>
                                 <button class="btn btn-outline-danger" onclick="deleteStudent(${s.id})" title="${t('common.delete')}">
                                     <i class="bi bi-trash"></i>
@@ -2249,6 +2285,68 @@
             localStorage.removeItem('user');
             window.location.href = '/';
         }
+
+        // ===== Смена/сброс пароля =====
+        let pwMode = null;          // 'self' | 'student'
+        let pwStudentId = null;
+
+        function pwShowError(msg) {
+            const el = document.getElementById('pwError');
+            el.textContent = msg;
+            el.classList.remove('d-none');
+        }
+
+        function openSelfPassword() {
+            pwMode = 'self';
+            pwStudentId = null;
+            document.getElementById('passwordForm').reset();
+            document.getElementById('pwError').classList.add('d-none');
+            document.getElementById('pwCurrentWrap').classList.remove('d-none');
+            document.getElementById('pwCurrent').required = true;
+            document.getElementById('pwModalTitle').textContent = t('pw.change_own');
+            new bootstrap.Modal(document.getElementById('passwordModal')).show();
+        }
+
+        function openResetStudentPassword(id, name) {
+            pwMode = 'student';
+            pwStudentId = id;
+            document.getElementById('passwordForm').reset();
+            document.getElementById('pwError').classList.add('d-none');
+            document.getElementById('pwCurrentWrap').classList.add('d-none');
+            document.getElementById('pwCurrent').required = false;
+            document.getElementById('pwModalTitle').textContent = t('pw.reset_student') + ': ' + name;
+            new bootstrap.Modal(document.getElementById('passwordModal')).show();
+        }
+
+        document.getElementById('passwordForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            document.getElementById('pwError').classList.add('d-none');
+            const newPassword = document.getElementById('pwNew').value;
+            if (newPassword.length < 8) { pwShowError(t('pw.min')); return; }
+
+            try {
+                let res;
+                if (pwMode === 'self') {
+                    res = await fetch('/api/auth/change-password', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ currentPassword: document.getElementById('pwCurrent').value, newPassword })
+                    });
+                } else {
+                    res = await fetch(`/api/students/${pwStudentId}/reset-password`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ newPassword })
+                    });
+                }
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || t('msg.error'));
+                bootstrap.Modal.getInstance(document.getElementById('passwordModal')).hide();
+                alert(pwMode === 'self' ? t('pw.changed') : t('pw.reset_done'));
+            } catch (err) {
+                pwShowError(err.message);
+            }
+        });
 
         ['resultGroup', 'resultTest', 'dateFrom', 'dateTo'].forEach(id => {
             document.getElementById(id)?.addEventListener('change', loadResults);
