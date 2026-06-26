@@ -15,17 +15,49 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Подключение к базе данных
-const pool = mysql2.createPool({
+// ============================================
+// МУЛЬТИАРЕНДНОСТЬ: отдельная БД на каждый колледж (tenant)
+// ============================================
+// Базовая конфигурация подключения (без конкретной БД) — переиспользуется
+// для control-БД, БД по умолчанию и БД отдельных колледжей.
+const baseDbConfig = {
     host: process.env.DB_HOST || '127.0.0.1',
     user: process.env.DB_USER || 'psyagent_user',
     password: process.env.DB_PASSWORD || 'Ewe123123!',
-    database: process.env.DB_NAME || 'psych_diagnostic',
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
     charset: 'utf8mb4'
-});
+};
+
+const DEFAULT_DB_NAME = process.env.DB_NAME || 'psych_diagnostic';
+const CONTROL_DB_NAME = process.env.CONTROL_DB_NAME || 'psych_control';
+
+// БД «колледжа по умолчанию» (текущая) — чтобы существующий вход без кода колледжа работал.
+const pool = mysql2.createPool({ ...baseDbConfig, database: DEFAULT_DB_NAME });
+
+// Пул без указания БД — для административных операций (CREATE DATABASE при провижининге).
+const adminPool = mysql2.createPool({ ...baseDbConfig });
+
+// Control-БД (реестр колледжей и супер-админов).
+let controlPool = null;
+
+// Кэш пулов по имени БД колледжа.
+const tenantPools = new Map();
+function tenantPool(dbName) {
+    const name = dbName || DEFAULT_DB_NAME;
+    if (!tenantPools.has(name)) {
+        tenantPools.set(name, mysql2.createPool({ ...baseDbConfig, database: name }));
+    }
+    return tenantPools.get(name);
+}
+// БД по умолчанию тоже регистрируем в кэше под её именем.
+tenantPools.set(DEFAULT_DB_NAME, pool);
+
+// Безопасное имя БД (только латиница/цифры/подчёркивание) для интерполяции в DDL.
+function safeDbName(name) {
+    return String(name).replace(/[^a-zA-Z0-9_]/g, '');
+}
 
 // Проверка подключения + авто-создание недостающих таблиц
 async function testConnection() {
@@ -34,9 +66,75 @@ async function testConnection() {
         console.log(' Подключение к базе данных успешно!');
         conn.release();
         await ensureSchema();
+        await ensureControlSchema();
     } catch (error) {
         console.error(' Ошибка подключения к БД:', error.message);
     }
+}
+
+// Создаёт control-БД (реестр колледжей и супер-админов) и наполняет значениями по умолчанию.
+async function ensureControlSchema() {
+    try {
+        const cName = safeDbName(CONTROL_DB_NAME);
+        await adminPool.query(`CREATE DATABASE IF NOT EXISTS \`${cName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+        controlPool = mysql2.createPool({ ...baseDbConfig, database: cName });
+
+        await controlPool.query(`
+            CREATE TABLE IF NOT EXISTS tenants (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                code VARCHAR(60) UNIQUE NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                db_name VARCHAR(120) NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+        `);
+        await controlPool.query(`
+            CREATE TABLE IF NOT EXISTS platform_admins (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(100) UNIQUE NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                full_name VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+        `);
+
+        // Колледж по умолчанию = текущая БД (чтобы существующий вход работал).
+        const [tenants] = await controlPool.execute('SELECT COUNT(*) AS n FROM tenants');
+        if (tenants[0].n === 0) {
+            await controlPool.execute(
+                'INSERT INTO tenants (code, name, db_name) VALUES (?, ?, ?)',
+                ['default', 'Колледж по умолчанию', DEFAULT_DB_NAME]
+            );
+        }
+
+        // Супер-админ (владелец SaaS).
+        const [admins] = await controlPool.execute('SELECT COUNT(*) AS n FROM platform_admins');
+        if (admins[0].n === 0) {
+            const suUser = process.env.SUPERADMIN_USER || 'superadmin';
+            const suPass = process.env.SUPERADMIN_PASSWORD || 'superadmin';
+            const hash = await bcrypt.hash(suPass, 10);
+            await controlPool.execute(
+                'INSERT INTO platform_admins (username, password, full_name) VALUES (?, ?, ?)',
+                [suUser, hash, 'Супер-администратор']
+            );
+            console.log(` Супер-админ создан: ${suUser} / ${suPass} (смените пароль!)`);
+        }
+        console.log(' Control-БД готова (мультиарендность).');
+    } catch (e) {
+        console.error('Ошибка инициализации control-БД:', e.message);
+    }
+}
+
+// Резолвинг колледжа по коду -> запись tenant | null
+async function getTenantByCode(code) {
+    if (!controlPool) return null;
+    const c = String(code || '').trim() || 'default';
+    const [rows] = await controlPool.execute(
+        'SELECT * FROM tenants WHERE code = ? AND is_active = TRUE',
+        [c]
+    );
+    return rows[0] || null;
 }
 
 // Создаёт таблицы, которых может не быть в уже развёрнутой БД (без ручной миграции).
