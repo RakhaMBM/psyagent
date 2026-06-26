@@ -1015,6 +1015,9 @@
                         <td>${s.school || '-'}</td>
                         <td>
                             <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-secondary" onclick="printStudentReport(${s.id})" title="${t('report.print')}">
+                                    <i class="bi bi-printer"></i>
+                                </button>
                                 <button class="btn btn-outline-primary" onclick="editStudent(${s.id})" title="${t('common.edit')}">
                                     <i class="bi bi-pencil"></i>
                                 </button>
@@ -1937,7 +1940,12 @@
 
                 const body = document.getElementById('resultModalBody');
                 body.innerHTML = `
-                    <h5>${result.full_name}</h5>
+                    <div class="d-flex justify-content-between align-items-start">
+                        <h5>${result.full_name}</h5>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="printResultReport(${result.id})">
+                            <i class="bi bi-printer me-1"></i>${t('report.print')}
+                        </button>
+                    </div>
                     ${summaryHtml}
                     ${breakdownHtml}
                     <hr>
@@ -1956,6 +1964,124 @@
 
                 new bootstrap.Modal(document.getElementById('resultModal')).show();
             } catch (e) {}
+        }
+
+        // ========== ПЕЧАТНЫЕ ЗАКЛЮЧЕНИЯ (печать браузера → «Сохранить как PDF») ==========
+        function reportFamilyLabel(ft) {
+            const map = { full: 'family.full', single_parent: 'family.single_parent', guardian: 'family.guardian', other: 'family.other' };
+            return map[ft] ? t(map[ft]) : '—';
+        }
+
+        // Разбивка одного результата по шкалам (или сырой балл для не-методик)
+        function reportResultBody(r) {
+            const m = window.findMethodologyByTitle ? window.findMethodologyByTitle(r.questionnaire_title) : null;
+            if (m && window.scoreMethodology) {
+                const sc = window.scoreMethodology(m, r.answers || {});
+                const warns = sc.validity.filter(v => v.failed)
+                    .map(v => `<p class="warn">⚠ ${v.warning || v.name} (${v.value})</p>`).join('');
+                const rows = sc.scales.map(s => `
+                    <tr><td>${s.name}</td>
+                        <td>${s.raw}${s.maxScore != null ? ' / ' + s.maxScore : ''}</td>
+                        <td>${s.interp ? s.interp.label : '—'}</td></tr>`).join('');
+                return `${warns}
+                    <table class="scales">
+                        <thead><tr><th>${t('rmodal.scale')}</th><th>${t('table.score')}</th><th>${t('rmodal.interpretation')}</th></tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>`;
+            }
+            return `<p>${t('table.score')}: <strong>${r.score}</strong></p>`;
+        }
+
+        function buildStudentReport(student, results) {
+            const date = new Date().toLocaleDateString(getLang() === 'kz' ? 'kk-KZ' : 'ru-RU');
+            const resultsHtml = results.length
+                ? results.map(r => `
+                    <div class="result">
+                        <h3>${r.questionnaire_title}</h3>
+                        <p class="meta">${t('table.date')}: ${formatDateTime(r.completed_at)}</p>
+                        ${reportResultBody(r)}
+                    </div>`).join('')
+                : `<p class="muted">${t('report.no_results')}</p>`;
+            return `
+                <h1>${t('report.title')}</h1>
+                <p class="date">${date}</p>
+                <table class="info">
+                    <tr><td>${t('table.fio')}</td><td>${student.full_name || '—'}</td></tr>
+                    <tr><td>${t('table.group')}</td><td>${student.group_name || '—'}</td></tr>
+                    <tr><td>${t('table.birth_date')}</td><td>${student.birth_date ? formatDate(student.birth_date) : '—'}${student.age != null ? ' (' + student.age + ' ' + t('unit.years') + ')' : ''}</td></tr>
+                    <tr><td>${t('field.school')}</td><td>${student.school || '—'}</td></tr>
+                    <tr><td>${t('field.family_type')}</td><td>${reportFamilyLabel(student.family_type)}</td></tr>
+                    <tr><td>${t('field.lives_with')}</td><td>${student.lives_with || '—'}</td></tr>
+                </table>
+                <h2>${t('report.results')}</h2>
+                ${resultsHtml}
+                <div class="notes"><strong>${t('report.notes')}:</strong><div class="line"></div><div class="line"></div></div>
+                <div class="sign">${t('report.psychologist')}: ____________________ / ${currentUser.fullName || ''}</div>
+            `;
+        }
+
+        function printReportHtml(inner) {
+            const w = window.open('', '_blank');
+            if (!w) { alert(t('report.popup_blocked')); return; }
+            w.document.write(`<!DOCTYPE html><html lang="${getLang()}"><head><meta charset="utf-8"><title>${t('report.title')}</title>
+                <style>
+                    @page { margin: 18mm; }
+                    body { font-family: 'Times New Roman', Georgia, serif; color:#000; font-size:13px; line-height:1.5; }
+                    h1 { font-size:18px; text-align:center; margin:0 0 4px; }
+                    h2 { font-size:15px; border-bottom:1px solid #000; padding-bottom:2px; margin-top:18px; }
+                    h3 { font-size:14px; margin:10px 0 4px; }
+                    .date { text-align:center; color:#555; margin:0 0 16px; }
+                    .meta { color:#555; margin:0 0 4px; font-size:12px; }
+                    table { width:100%; border-collapse:collapse; margin:6px 0; }
+                    table.info td { padding:3px 6px; border:1px solid #999; vertical-align:top; }
+                    table.info td:first-child { width:35%; font-weight:bold; background:#f3f3f3; }
+                    table.scales th, table.scales td { border:1px solid #999; padding:4px 6px; text-align:left; }
+                    table.scales th { background:#f3f3f3; }
+                    .result { page-break-inside: avoid; margin-bottom:10px; }
+                    .warn { color:#b00; font-weight:bold; margin:4px 0; }
+                    .muted { color:#777; }
+                    .notes { margin-top:22px; }
+                    .notes .line { border-bottom:1px solid #999; height:22px; }
+                    .sign { margin-top:28px; }
+                </style></head><body>${inner}</body></html>`);
+            w.document.close();
+            w.focus();
+            setTimeout(() => { try { w.print(); } catch (e) {} }, 350);
+        }
+
+        async function printStudentReport(studentId) {
+            try {
+                const [sRes, rRes] = await Promise.all([
+                    fetch('/api/students', { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch('/api/results', { headers: { 'Authorization': `Bearer ${token}` } })
+                ]);
+                const students = await sRes.json();
+                const results = await rRes.json();
+                const student = (Array.isArray(students) ? students : []).find(s => s.id === studentId);
+                if (!student) return;
+                const userResults = (Array.isArray(results) ? results : []).filter(r => r.user_id === studentId);
+                printReportHtml(buildStudentReport(student, userResults));
+            } catch (e) {
+                alert(t('msg.error') + ': ' + e.message);
+            }
+        }
+
+        async function printResultReport(resultId) {
+            try {
+                const [sRes, rRes] = await Promise.all([
+                    fetch('/api/students', { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch('/api/results', { headers: { 'Authorization': `Bearer ${token}` } })
+                ]);
+                const students = await sRes.json();
+                const results = await rRes.json();
+                const r = (Array.isArray(results) ? results : []).find(x => x.id === resultId);
+                if (!r) return;
+                const student = (Array.isArray(students) ? students : []).find(s => s.id === r.user_id)
+                    || { full_name: r.full_name, group_name: r.group_name };
+                printReportHtml(buildStudentReport(student, [r]));
+            } catch (e) {
+                alert(t('msg.error') + ': ' + e.message);
+            }
         }
 
         // ========== ЭКСПОРТ РЕЗУЛЬТАТОВ В EXCEL ==========
