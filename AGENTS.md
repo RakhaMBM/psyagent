@@ -26,11 +26,12 @@
 |---|---|
 | `server.js` | Весь REST API + отдача страниц. ~1500 строк. |
 | `schema.sql` | Схема БД колледжа (для чистой установки). |
-| `public/index.html` | Вход (поле «код колледжа»). |
-| `public/admin.html` | Кабинет психолога-админа (студенты, кураторы, тесты, методики, результаты, дашборд). |
-| `public/curator.html` | Кабинет куратора (read-only по своей группе). |
-| `public/student.html` | Кабинет студента (прохождение тестов). |
-| `public/platform.html` | Кабинет супер-админа (`/platform`): колледжи, сброс паролей. |
+| `public/index.html` + `index.js` | Вход (поле «код колледжа»). |
+| `public/admin.html` + `admin.js` | Кабинет психолога-админа (студенты, кураторы, тесты, методики, результаты, дашборд). |
+| `public/curator.html` + `curator.js` | Кабинет куратора (read-only по своей группе). |
+| `public/student.html` + `student.js` | Кабинет студента (прохождение тестов). |
+| `public/platform.html` + `platform.js` | Кабинет супер-админа (`/platform`): колледжи, сброс паролей. |
+| `public/event-actions.js` | Делегирование UI-событий через `data-action`; inline-JavaScript запрещён CSP. |
 | `public/i18n.js` | Двуязычие RU/KZ (см. §7). |
 | `public/methodologies.js` | Движок подсчёта + встроенные методики (см. §5). |
 | `public/styles.css` | Общие стили (имя именно `styles.css`). |
@@ -145,14 +146,14 @@ Middleware в `server.js`: `requireAdmin`, `requireSuperAdmin`, `requireStaff` (
 
 ```bash
 # 1. Синтаксис
-node --check server.js && node --check public/i18n.js && node --check public/methodologies.js
+node --check server.js && node --check public/*.js
 
 # 2. Юнит-тесты
 npm test
 
-# 3. Синтаксис встроенных <script> в HTML + паритет i18n + нет пропущенных/лишних ключей.
+# 3. В HTML нет inline-скриптов/обработчиков + паритет i18n + нет пропущенных/лишних ключей.
 #    Суть проверки: извлечь ключи ru/kz из i18n.js, собрать использованные (data-i18n* и t('...'))
-#    в admin/student/index/curator.html, убедиться что нет missing и нет RU-only/KZ-only.
+#    в HTML и соответствующих page-JS, убедиться что нет missing и нет RU-only/KZ-only.
 #    (Готовый скрипт многократно использовался — см. историю; уровни level.low/medium/high
 #     используются динамически как t('level.'+x), статически могут выглядеть «unused» — это норма.)
 

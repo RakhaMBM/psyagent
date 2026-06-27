@@ -12,13 +12,15 @@
 - **Backend:** Node.js + Express (`server.js`, единый файл).
 - **БД:** MySQL 8 через `mysql2/promise` (пул соединений).
 - **Auth:** JWT (`jsonwebtoken`) + `bcryptjs` для паролей.
-- **Frontend:** статические HTML на Bootstrap 5 в `public/` (без сборки).
+- **Frontend:** статические HTML + page-JS на Bootstrap 5 в `public/` (без сборки).
 
 ## Структура
 - `server.js` — весь REST API и отдача страниц.
 - `schema.sql` — создание БД `psych_diagnostic`, таблиц, индексов и пользователя БД.
-- `public/index.html` — вход. `admin.html` — кабинет психолога. `student.html` — кабинет студента.
-- `public/styles.css` — общие стили (на него ссылаются все три страницы — имя именно `styles.css`).
+- `public/index.html` + `index.js` — вход; пары `admin.*`, `student.*`, `curator.*`, `platform.*` —
+  соответствующие кабинеты. Inline-JavaScript запрещён CSP.
+- `public/event-actions.js` — единое делегирование UI-событий через `data-action`.
+- `public/styles.css` — общие стили (на него ссылаются страницы — имя именно `styles.css`).
 - `public/i18n.js` — двуязычие RU/KZ. Текст тегается `data-i18n` / `data-i18n-ph` / `data-i18n-html`,
   динамика — через глобальную `t('ключ')`. Кнопка-переключатель вызывает `toggleLang()`;
   страница может определить `window.onLangChange` для перерисовки динамических частей.
