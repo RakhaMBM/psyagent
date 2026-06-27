@@ -79,6 +79,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="methodologies.js"></script>
     <script src="i18n.js"></script>
+    <script src="common.js"></script>
     <script>
         const token = localStorage.getItem('token');
         const user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -97,6 +98,18 @@
         }
         function fmtDate(d) { return d ? new Date(d).toLocaleDateString(getLang() === 'kz' ? 'kk-KZ' : 'ru-RU') : '-'; }
         function fmtDateTime(d) { return d ? new Date(d).toLocaleString(getLang() === 'kz' ? 'kk-KZ' : 'ru-RU') : '-'; }
+        function methodologyForResult(result) {
+            if (result && result.methodology_data) {
+                try {
+                    return typeof result.methodology_data === 'string'
+                        ? JSON.parse(result.methodology_data)
+                        : result.methodology_data;
+                } catch (_) {}
+            }
+            return window.findMethodologyByTitle
+                ? window.findMethodologyByTitle(result && result.questionnaire_title)
+                : null;
+        }
 
         async function loadCustomMethodologies() {
             try {
@@ -142,7 +155,7 @@
         }
 
         function resultInterp(r) {
-            const m = window.findMethodologyByTitle ? window.findMethodologyByTitle(r.questionnaire_title) : null;
+            const m = methodologyForResult(r);
             if (m && window.scoreMethodology && r.answers) {
                 const sc = window.scoreMethodology(m, r.answers);
                 return sc.primary && sc.primary.interp ? sc.primary.interp.label : '';
@@ -180,11 +193,11 @@
                 .sort((a, b) => new Date(a.completed_at || 0) - new Date(b.completed_at || 0));
 
             const resultBody = (r) => {
-                const m = window.findMethodologyByTitle ? window.findMethodologyByTitle(r.questionnaire_title) : null;
+                const m = methodologyForResult(r);
                 if (m && window.scoreMethodology && r.answers) {
                     const sc = window.scoreMethodology(m, r.answers);
                     const warns = sc.validity.filter(v => v.failed).map(v => `<p class="warn">⚠ ${esc(v.warning || v.name)} (${v.value})</p>`).join('');
-                    const rows = sc.scales.map(s => `<tr><td>${esc(s.name)}</td><td>${s.raw}${s.maxScore != null ? ' / ' + s.maxScore : ''}</td><td>${s.interp ? esc(s.interp.label) : '—'}</td></tr>`).join('');
+                    const rows = sc.scales.filter(s => s.display !== false).map(s => `<tr><td>${esc(s.name)}</td><td>${s.raw}${s.maxScore != null ? ' / ' + s.maxScore : ''}</td><td>${s.interp ? esc(s.interp.label) : '—'}</td></tr>`).join('');
                     return `${warns}<table class="scales"><thead><tr><th>${t('rmodal.scale')}</th><th>${t('table.score')}</th><th>${t('rmodal.interpretation')}</th></tr></thead><tbody>${rows}</tbody></table>`;
                 }
                 return `<p>${t('table.score')}: <strong>${r.score}</strong></p>`;

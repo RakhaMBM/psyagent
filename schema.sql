@@ -18,6 +18,7 @@ CREATE TABLE users (
     group_name VARCHAR(100),
     email VARCHAR(150),
     phone VARCHAR(20),
+    token_version INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     is_active BOOLEAN DEFAULT TRUE
@@ -45,6 +46,7 @@ CREATE TABLE questionnaires (
     created_by INT NOT NULL,
     is_active BOOLEAN DEFAULT TRUE,
     target_groups JSON COMMENT 'Группы, которым назначен',
+    methodology_data JSON COMMENT 'Снимок формулы методики на момент создания теста',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (created_by) REFERENCES users(id)
@@ -71,6 +73,7 @@ CREATE TABLE results (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     questionnaire_id INT NOT NULL,
+    assignment_id INT NULL,
     answers JSON NOT NULL,
     score DECIMAL(10,2),
     status ENUM('in_progress', 'completed') DEFAULT 'in_progress',
@@ -93,6 +96,10 @@ CREATE TABLE assignments (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (assigned_by) REFERENCES users(id)
 );
+
+ALTER TABLE results
+    ADD CONSTRAINT fk_results_assignment
+    FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE;
 
 -- Пользовательские методики (создаются психологом через редактор).
 -- Всё определение методики (вопросы, шкалы, интерпретация) хранится в JSON `data`.
@@ -126,19 +133,14 @@ CREATE INDEX idx_users_role ON users(role);
 CREATE INDEX idx_users_group ON users(group_name);
 CREATE INDEX idx_results_user ON results(user_id);
 CREATE INDEX idx_results_questionnaire ON results(questionnaire_id);
+CREATE UNIQUE INDEX uq_results_assignment ON results(assignment_id);
 CREATE INDEX idx_assignments_user ON assignments(user_id, status);
 
--- Вставка администратора по умолчанию
--- Учётные данные для входа: логин = admin, пароль = password
-INSERT INTO users (username, password, full_name, role, email)
-VALUES ('admin', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
-        'Администратор Психолог', 'admin', 'admin@college.ru');
-
 -- ============================================
--- ПОЛЬЗОВАТЕЛЬ ПРИЛОЖЕНИЯ
--- Должен совпадать с настройками подключения в server.js
--- (DB_USER / DB_PASSWORD). Запускать от имени root.
+-- БЕЗОПАСНАЯ ПЕРВИЧНАЯ НАСТРОЙКА
 -- ============================================
-CREATE USER IF NOT EXISTS 'psyagent_user'@'localhost' IDENTIFIED BY 'Ewe123123!';
-GRANT ALL PRIVILEGES ON psych_diagnostic.* TO 'psyagent_user'@'localhost';
-FLUSH PRIVILEGES;
+-- Пароли намеренно не хранятся в этом файле.
+-- 1. Создайте пользователя MySQL с уникальным сильным паролем.
+-- 2. Выдайте ему права на psych_diagnostic, psych_control и создание БД колледжей.
+-- 3. Запишите значения в .env по образцу .env.example.
+-- 4. Создайте первого администратора командой npm run create-admin.

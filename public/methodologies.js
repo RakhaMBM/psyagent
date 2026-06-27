@@ -18,7 +18,7 @@
                      • простой: массив строк (одна общая шкала, сумма весов);
                      • расширенный: массив объектов
                          { text, scale?, reverse?, options? }
-                       scale   — id подшкалы, к которой относится вопрос
+                       scale   — id подшкалы или массив id, к которым относится вопрос
                                  (если не указан — попадает в первую/общую шкалу);
                        reverse — обратный вопрос: вес считается зеркально
                                  (min+max − выбранный), для прямых/обратных пунктов;
@@ -31,7 +31,12 @@
 
    --- Многошкальная методика (подшкалы) ---
      scales        — массив подшкал, у каждой своя интерпретация:
-                     [{ id, name, maxScore?, interpretation: [{min,max,level,label,color?}] }]
+                     [{ id, name, maxScore?, aggregate?, calculation?, precision?,
+                        interpretation: [{min,max,level,label,color?}] }]
+                     aggregate: true — итоговая шкала, равная сумме остальных
+                     шкал (её балл не суммируется повторно в total);
+                     calculation: 'average' — среднее по вопросам шкалы вместо суммы;
+     totalScale     — НЕОБЯЗАТЕЛЬНО: id шкалы, значение которой сохраняется как total;
      validity      — НЕОБЯЗАТЕЛЬНО: шкалы достоверности (напр. «шкала лжи»):
                      [{ id, name, scale, threshold, warning }]
                      Если сумма по шкале > threshold — результат помечается
@@ -50,7 +55,9 @@
    из этих данных и масштабируются сами. Балл считается на клиенте по этим правилам.
    ============================================ */
 
-window.PSY_METHODOLOGIES = [
+const PSY_ROOT = typeof window !== 'undefined' ? window : globalThis;
+
+PSY_ROOT.PSY_METHODOLOGIES = [
     {
         id: 'ucla-loneliness-russell',
         title: 'Методика диагностики уровня субъективного ощущения одиночества (Д. Рассел, Л. Пепло, М. Фергюсон)',
@@ -160,32 +167,523 @@ window.PSY_METHODOLOGIES = [
             { min: 5,  max: 7,  level: 'medium', label: 'Средний уровень тревожности' },
             { min: 0,  max: 4,  level: 'low',    label: 'Низкий уровень тревожности' }
         ]
+    },
+
+    {
+        id: 'hardiness-maddi',
+        title: 'Тест жизнестойкости (С. Мадди, адаптация Д.А. Леонтьева, Е.И. Рассказовой)',
+        description: 'Методика оценивает общий уровень жизнестойкости и три её компонента: вовлечённость, контроль и принятие риска.',
+        instruction: 'Ответьте, пожалуйста, на следующие вопросы, отмечая тот ответ, который наилучшим образом отражает Ваше мнение.',
+        answerOptions: [
+            { text: 'Нет', score: 0 },
+            { text: 'Скорее нет, чем да', score: 1 },
+            { text: 'Скорее да, чем нет', score: 2 },
+            { text: 'Да', score: 3 }
+        ],
+        questions: [
+            { text: 'Я часто не уверен в собственных решениях', scale: 'control', reverse: true },
+            { text: 'Иногда мне кажется, что никому нет до меня дела', scale: 'involvement', reverse: true },
+            { text: 'Часто, даже хорошо выспавшись, я с трудом заставляю себя встать с постели', scale: 'involvement', reverse: true },
+            { text: 'Я постоянно занят и мне это нравится', scale: 'involvement' },
+            { text: 'Часто я предпочитаю «плыть» по течению', scale: 'control', reverse: true },
+            { text: 'Я меняю свои планы в зависимости от обстоятельств', scale: 'control', reverse: true },
+            { text: 'Меня раздражают события, из-за которых я вынужден менять свой распорядок дня', scale: 'risk', reverse: true },
+            { text: 'Непредвиденные трудности порой сильно утомляют меня', scale: 'control', reverse: true },
+            { text: 'Я всегда контролирую ситуацию настолько, насколько это необходимо', scale: 'control' },
+            { text: 'Порой я так устаю, что уже ничто не может меня заинтересовать', scale: 'involvement', reverse: true },
+            { text: 'Порой всё, что я делаю, кажется мне бесполезным', scale: 'involvement', reverse: true },
+            { text: 'Я стараюсь быть в курсе всего происходящего вокруг меня', scale: 'involvement' },
+            { text: 'Лучше синица в руках, чем журавль в небе', scale: 'risk', reverse: true },
+            { text: 'Вечером я часто чувствую себя совершенно разбитым', scale: 'involvement', reverse: true },
+            { text: 'Я предпочитаю ставить перед собой труднодостижимые цели и добиваться их', scale: 'control' },
+            { text: 'Иногда меня пугают мысли о будущем', scale: 'control', reverse: true },
+            { text: 'Я всегда уверен, что смогу воплотить в жизнь всё, что задумал', scale: 'control' },
+            { text: 'Мне кажется, я не живу полной жизнью, а только играю роль', scale: 'risk', reverse: true },
+            { text: 'Мне кажется, что если бы в прошлом у меня было меньше разочарований и невзгод, мне было бы сейчас легче жить на свете', scale: 'risk', reverse: true },
+            { text: 'Возникающие проблемы часто кажутся мне неразрешимыми', scale: 'control', reverse: true },
+            { text: 'Испытав поражение, я буду пытаться взять реванш', scale: 'control' },
+            { text: 'Я люблю знакомиться с новыми людьми', scale: 'involvement' },
+            { text: 'Когда кто-нибудь жалуется, что жизнь скучна, это значит, он просто не умеет видеть интересное', scale: 'involvement' },
+            { text: 'Мне всегда есть чем заняться', scale: 'involvement' },
+            { text: 'Я всегда могу повлиять на результат того, что происходит вокруг', scale: 'control' },
+            { text: 'Я часто сожалею о том, что уже сделано', scale: 'risk', reverse: true },
+            { text: 'Если проблема требует больших усилий, я предпочитаю отложить её до лучших времён', scale: 'control', reverse: true },
+            { text: 'Мне трудно сближаться с другими людьми', scale: 'involvement', reverse: true },
+            { text: 'Как правило, окружающие слушают меня внимательно', scale: 'involvement' },
+            { text: 'Если бы я мог, я бы многое изменил в прошлом', scale: 'risk', reverse: true },
+            { text: 'Я довольно часто откладываю на завтра то, что трудно осуществимо, или то, в чём я не уверен', scale: 'control', reverse: true },
+            { text: 'Мне кажется, жизнь проходит мимо меня', scale: 'involvement', reverse: true },
+            { text: 'Мои мечты редко сбываются', scale: 'risk', reverse: true },
+            { text: 'Неожиданности дарят мне интерес к жизни', scale: 'risk' },
+            { text: 'Порой мне кажется, что все мои усилия тщетны', scale: 'control', reverse: true },
+            { text: 'Порой я мечтаю о спокойной размеренной жизни', scale: 'risk', reverse: true },
+            { text: 'Мне не хватает упорства закончить начатое', scale: 'involvement', reverse: true },
+            { text: 'Бывает, жизнь кажется мне скучной и бесцветной', scale: 'involvement', reverse: true },
+            { text: 'У меня нет возможности влиять на неожиданные проблемы', scale: 'control', reverse: true },
+            { text: 'Окружающие меня недооценивают', scale: 'involvement', reverse: true },
+            { text: 'Как правило, я работаю с удовольствием', scale: 'involvement' },
+            { text: 'Иногда я чувствую себя лишним даже в кругу друзей', scale: 'involvement', reverse: true },
+            { text: 'Бывает, на меня наваливается столько проблем, что просто руки опускаются', scale: 'control', reverse: true },
+            { text: 'Друзья уважают меня за упорство и непреклонность', scale: 'control' },
+            { text: 'Я охотно берусь воплощать новые идеи', scale: 'risk' }
+        ],
+        scales: [
+            {
+                id: 'total',
+                name: 'Жизнестойкость',
+                maxScore: 135,
+                aggregate: true,
+                interpretation: [
+                    { min: 0, max: 62, level: 'low', label: 'Низкий уровень жизнестойкости', attention: true },
+                    { min: 63, max: 81, level: 'medium', label: 'Средний уровень жизнестойкости' },
+                    { min: 82, max: 99, level: 'high', label: 'Высокий уровень жизнестойкости' }
+                ]
+            },
+            {
+                id: 'involvement',
+                name: 'Вовлечённость',
+                maxScore: 54,
+                interpretation: [
+                    { min: 0, max: 30, level: 'low', label: 'Низкий уровень вовлечённости' },
+                    { min: 31, max: 38, level: 'medium', label: 'Средний уровень вовлечённости' },
+                    { min: 39, max: 46, level: 'high', label: 'Высокий уровень вовлечённости' }
+                ]
+            },
+            {
+                id: 'control',
+                name: 'Контроль',
+                maxScore: 51,
+                interpretation: [
+                    { min: 0, max: 21, level: 'low', label: 'Низкий уровень контроля' },
+                    { min: 22, max: 29, level: 'medium', label: 'Средний уровень контроля' },
+                    { min: 30, max: 38, level: 'high', label: 'Высокий уровень контроля' }
+                ]
+            },
+            {
+                id: 'risk',
+                name: 'Принятие риска',
+                maxScore: 30,
+                interpretation: [
+                    { min: 0, max: 10, level: 'low', label: 'Низкий уровень принятия риска' },
+                    { min: 11, max: 14, level: 'medium', label: 'Средний уровень принятия риска' },
+                    { min: 15, max: 18, level: 'high', label: 'Высокий уровень принятия риска' }
+                ]
+            }
+        ]
+    },
+
+    {
+        id: 'internet-addiction-young',
+        title: 'Шкала интернет-зависимости (К. Янг)',
+        description: 'Опросник для самодиагностики проблем, связанных с чрезмерным использованием интернета.',
+        instruction: 'Ответьте, пожалуйста, предельно честно на следующие вопросы, выбрав один из пяти вариантов ответа.',
+        answerOptions: [
+            { text: 'Никогда', score: 1 },
+            { text: 'Редко', score: 2 },
+            { text: 'Иногда', score: 3 },
+            { text: 'Часто', score: 4 },
+            { text: 'Постоянно', score: 5 }
+        ],
+        questions: [
+            'Часто ли вы замечаете, что проводите онлайн больше времени, чем намеревались?',
+            'Часто ли вы пренебрегаете домашними делами, чтобы провести больше времени в сети?',
+            'Часто ли вы предпочитаете пребывание в сети личному общению с партнёром?',
+            'Часто ли вы заводите знакомства с пользователями интернета, находясь онлайн?',
+            'Часто ли окружающие интересуются количеством времени, проводимым вами в сети?',
+            'Часто ли страдают ваши успехи в учёбе или работе, так как вы слишком много времени проводите в сети?',
+            'Часто ли вы проверяете электронную почту раньше, чем сделаете что-то другое, более необходимое?',
+            'Часто ли страдает ваша производительность труда из-за увлечения интернетом?',
+            'Часто ли вы занимаете оборонительную позицию и скрытничаете, когда вас спрашивают, чем вы занимаетесь в сети?',
+            'Часто ли вы блокируете беспокоящие мысли о вашей реальной жизни утешительными мыслями об интернете?',
+            'Часто ли вы обнаруживаете себя предвкушающим, как вновь окажетесь в интернете?',
+            'Часто ли вы ощущаете, что жизнь без интернета скучна, пуста и безрадостна?',
+            'Часто ли вы ругаетесь, кричите или иным образом выражаете свою досаду, когда кто-то пытается отвлечь вас от пребывания в сети?',
+            'Часто ли вы пренебрегаете сном, засиживаясь в интернете допоздна?',
+            'Часто ли вы предвкушаете, чем займётесь в интернете, находясь офлайн, или фантазируете о пребывании онлайн?',
+            'Часто ли вы говорите себе «ещё минутку», находясь онлайн?',
+            'Часто ли вы терпите поражение в попытках сократить время, проводимое в сети?',
+            'Часто ли вы пытаетесь скрыть количество времени, проводимое вами в сети?',
+            'Часто ли вы выбираете провести время в интернете вместо того, чтобы выбраться куда-либо с друзьями?',
+            'Часто ли вы испытываете депрессию, подавленность или нервозность, будучи вне сети, и отмечаете, что это состояние проходит, как только вы оказываетесь онлайн?'
+        ],
+        maxScore: 100,
+        interpretation: [
+            { min: 20, max: 49, level: 'low', label: 'Обычный пользователь интернета' },
+            { min: 50, max: 79, level: 'medium', label: 'Некоторые проблемы, связанные с чрезмерным использованием интернета', attention: true },
+            { min: 80, max: 100, level: 'high', label: 'Выраженная интернет-зависимость', attention: true }
+        ]
+    },
+
+    {
+        id: 'bullying-olweus',
+        title: 'Опросник «Буллинг» (Д. Олвеус)',
+        description: 'Методика выявляет проявления активного буллинга и подверженность буллингу (виктимизацию), отдельно для прямых и косвенных форм.',
+        instruction: 'Внимательно прочитайте утверждения, выберите вариант ответа и отметьте его.',
+        answerOptions: [
+            { text: 'Никогда не было', score: 0 },
+            { text: 'Было раз или два', score: 1 },
+            { text: 'Бывает иногда', score: 2 },
+            { text: 'Бывает раз в неделю', score: 3 },
+            { text: 'Бывает несколько раз в неделю', score: 4 }
+        ],
+        questions: [
+            { text: 'Я кого-то обозвал', scale: ['active', 'direct-active'] },
+            { text: 'Я с кем-то специально не разговаривал', scale: ['active', 'indirect-active'] },
+            { text: 'Я нанёс кому-то физический вред, например, толкнул или ударил', scale: ['active', 'direct-active'] },
+            { text: 'Я распространял о ком-то сплетни', scale: ['active', 'indirect-active'] },
+            { text: 'Я угрожал', scale: ['active', 'direct-active'] },
+            { text: 'Я украл или испортил чьи-то вещи', scale: ['active', 'direct-active'] },
+            { text: 'Меня обзывали', scale: ['victimization', 'direct-victimization'] },
+            { text: 'Обо мне распространяли сплетни', scale: ['victimization', 'indirect-victimization'] },
+            { text: 'Никто не хочет сидеть со мной или проводить свободное время', scale: ['victimization', 'indirect-victimization'] },
+            { text: 'У меня украли вещи', scale: ['victimization', 'direct-victimization'] },
+            { text: 'Мне нанесли физический вред (ударили, толкнули)', scale: ['victimization', 'direct-victimization'] },
+            { text: 'Никто не говорит со мной', scale: ['victimization', 'indirect-victimization'] },
+            { text: 'Мне угрожали', scale: ['victimization', 'direct-victimization'] }
+        ],
+        totalScale: 'active',
+        scales: [
+            { id: 'active', name: 'Активный буллинг', maxScore: 4, calculation: 'average', precision: 2, interpretation: bullyingRanges() },
+            { id: 'victimization', name: 'Виктимизация', maxScore: 4, calculation: 'average', precision: 2, interpretation: bullyingRanges() },
+            { id: 'direct-active', name: 'Прямой активный буллинг', maxScore: 4, calculation: 'average', precision: 2, interpretation: bullyingRanges() },
+            { id: 'indirect-active', name: 'Косвенный активный буллинг', maxScore: 4, calculation: 'average', precision: 2, interpretation: bullyingRanges() },
+            { id: 'direct-victimization', name: 'Прямая виктимизация', maxScore: 4, calculation: 'average', precision: 2, interpretation: bullyingRanges() },
+            { id: 'indirect-victimization', name: 'Косвенная виктимизация', maxScore: 4, calculation: 'average', precision: 2, interpretation: bullyingRanges() }
+        ]
+    },
+
+    {
+        id: 'adolescent-wellbeing-ryff',
+        title: 'Шкала благополучия подростка (К. Рифф)',
+        description: 'Опросник для предварительной оценки уровня психологического благополучия подростка.',
+        instruction: 'Прочтите каждый пункт и выберите ответ, который больше всего соответствует тому, что вы чувствуете за последние несколько дней.',
+        answerOptions: [
+            { text: 'Большую часть времени', score: 2 },
+            { text: 'Иногда', score: 1 },
+            { text: 'Никогда', score: 0 }
+        ],
+        questions: [
+            'Я, как и раньше, стремлюсь к чему-то позитивному',
+            'Я сплю очень хорошо',
+            { text: 'Мне хочется плакать', reverse: true },
+            'Мне нравится ходить куда-нибудь',
+            { text: 'Мне хочется уйти из дома', reverse: true },
+            { text: 'У меня болит желудок, бывают судороги или головная боль', reverse: true },
+            'У меня много энергии',
+            'Мне нравится моя еда',
+            'Я могу постоять за себя',
+            { text: 'Я думаю, жизнь ничего не стоит', reverse: true },
+            'Я хорош(а) в том, что я делаю',
+            'Мне нравится то, что я делаю, так же, как и раньше',
+            'Я люблю разговаривать с моими друзьями и семьёй',
+            { text: 'У меня ужасные сны', reverse: true },
+            { text: 'Я чувствую себя очень одиноким/одинокой', reverse: true },
+            'Меня легко развеселить',
+            { text: 'Я чувствую себя так грустно, что едва могу это вынести', reverse: true },
+            { text: 'Мне очень скучно', reverse: true }
+        ],
+        maxScore: 36,
+        interpretation: [
+            { min: 27, max: 36, level: 'high', label: 'Высокий уровень психологического благополучия' },
+            { min: 14, max: 26, level: 'medium', label: 'Средний уровень психологического благополучия' },
+            { min: 0, max: 13, level: 'low', label: 'Низкий уровень психологического благополучия', attention: true }
+        ]
+    },
+
+    {
+        id: 'hopelessness-beck',
+        title: 'Шкала безнадёжности (А. Бек)',
+        description: 'Методика измеряет выраженность негативного отношения человека к собственному будущему.',
+        instruction: 'Ниже приводятся 20 утверждений о Вашем будущем. Отметьте «Верно», если Вы согласны с утверждением, или «Неверно», если не согласны. Ответьте на все утверждения, не тратя слишком много времени на каждое.',
+        answerOptions: [
+            { text: 'Верно', score: 1 },
+            { text: 'Неверно', score: 0 }
+        ],
+        questions: [
+            { text: 'Я жду будущего с надеждой и энтузиазмом', reverse: true },
+            'Мне пора сдаться, так как я ничего не могу изменить к лучшему',
+            { text: 'Когда дела идут плохо, мне помогает мысль, что так не может продолжаться всегда', reverse: true },
+            'Я не могу представить, на что будет похожа моя жизнь через 10 лет',
+            { text: 'У меня достаточно времени, чтобы завершить дела, которыми я больше всего хочу заниматься', reverse: true },
+            { text: 'В будущем я надеюсь достичь успеха в том, что мне больше всего нравится', reverse: true },
+            'Будущее представляется мне во тьме',
+            { text: 'Я надеюсь, что получу в жизни больше хорошего, чем средний человек', reverse: true },
+            'У меня нет никаких просветов и нет причин верить, что они появятся в будущем',
+            { text: 'Мой прошлый опыт хорошо меня подготовил к будущему', reverse: true },
+            'Всё, что я вижу впереди, — скорее неприятности, чем радости',
+            'Я не надеюсь достичь того, чего действительно хочу',
+            { text: 'Когда я заглядываю в будущее, я надеюсь быть счастливее, чем я есть сейчас', reverse: true },
+            'Дела идут не так, как мне хочется',
+            { text: 'Я сильно верю в своё будущее', reverse: true },
+            'Я никогда не достигаю того, что хочу, поэтому глупо что-либо хотеть',
+            'Весьма маловероятно, что я получу реальное удовлетворение в будущем',
+            'Будущее представляется мне расплывчатым и неопределённым',
+            { text: 'В будущем меня ждёт больше хороших дней, чем плохих', reverse: true },
+            'Бесполезно пытаться получить то, чего я хочу, потому что, вероятно, я не добьюсь этого'
+        ],
+        maxScore: 20,
+        interpretation: [
+            { min: 0, max: 3, level: 'low', label: 'Безнадёжность не выявлена' },
+            { min: 4, max: 8, level: 'medium', label: 'Лёгкая безнадёжность', attention: true },
+            { min: 9, max: 14, level: 'high', label: 'Умеренная безнадёжность', attention: true },
+            { min: 15, max: 20, level: 'high', label: 'Тяжёлая безнадёжность', attention: true }
+        ]
+    },
+
+    {
+        id: 'hostility-cook-medley',
+        title: 'Шкала враждебности (У. Кук, Д. Медли)',
+        description: 'Опросник оценивает склонность к враждебному и агрессивному поведению по шкалам цинизма, агрессивности и враждебности.',
+        instruction: 'Внимательно прочитайте суждения и отметьте степень своего согласия, используя предложенную шкалу.',
+        answerOptions: [
+            { text: 'Обычно', score: 6 },
+            { text: 'Часто', score: 5 },
+            { text: 'Иногда', score: 4 },
+            { text: 'Случайно', score: 3 },
+            { text: 'Редко', score: 2 },
+            { text: 'Никогда', score: 1 }
+        ],
+        questions: [
+            { text: 'Я часто встречаю людей, называющих себя экспертами, хотя они таковыми не являются', scale: 'cynicism' },
+            { text: 'Мне часто приходилось выполнять указания людей, которые знали меньше, чем я', scale: 'cynicism' },
+            { text: 'Многих людей можно обвинить в аморальном поведении', scale: 'cynicism' },
+            { text: 'Многие люди преувеличивают тяжесть своих неудач, чтобы получить сочувствие и помощь', scale: 'cynicism' },
+            { text: 'Временами мне приходилось грубить людям, которые вели себя невежливо по отношению ко мне и действовали мне на нервы', scale: 'aggressiveness' },
+            { text: 'Большинство людей заводят друзей, потому что друзья могут быть полезны', scale: 'cynicism' },
+            { text: 'Часто необходимо затратить много усилий, чтобы убедить других в своей правоте', scale: 'cynicism' },
+            { text: 'Люди часто разочаровывали меня', scale: 'hostility' },
+            { text: 'Обычно люди требуют большего уважения своих прав, чем стремятся уважать права других', scale: 'cynicism' },
+            { text: 'Большинство людей не нарушают закон, потому что боятся быть пойманными', scale: 'cynicism' },
+            { text: 'Зачастую люди прибегают к нечестным способам, чтобы не потерять возможной выгоды', scale: 'cynicism' },
+            { text: 'Я считаю, что многие люди используют ложь для того, чтобы двигаться дальше', scale: 'cynicism' },
+            { text: 'Существуют люди, которые настолько мне неприятны, что я невольно радуюсь, когда их постигают неудачи', scale: 'hostility' },
+            { text: 'Я часто могу отойти от своих принципов, чтобы превзойти своего противника', scale: 'aggressiveness' },
+            { text: 'Если люди поступают со мной плохо, я обязательно отвечаю им тем же, хотя бы из принципа', scale: 'aggressiveness' },
+            { text: 'Как правило, я отчаянно отстаиваю свою точку зрения', scale: 'aggressiveness' },
+            { text: 'Некоторые члены моей семьи имеют привычки, которые меня раздражают', scale: 'hostility' },
+            { text: 'Я не всегда легко соглашаюсь с другими', scale: 'hostility' },
+            { text: 'Никого никогда не заботит то, что с тобой происходит', scale: 'cynicism' },
+            { text: 'Более безопасно никому не верить', scale: 'cynicism' },
+            { text: 'Я могу вести себя дружелюбно с людьми, которые, по моему мнению, поступают неверно', scale: 'aggressiveness' },
+            { text: 'Многие люди избегают ситуаций, в которых они должны помогать другим', scale: 'cynicism' },
+            { text: 'Я не осуждаю людей за то, что они стремятся присвоить себе всё, что только можно', scale: 'aggressiveness' },
+            { text: 'Я не виню человека за то, что он в своих целях использует других людей, позволяющих ему это делать', scale: 'aggressiveness' },
+            { text: 'Меня раздражает, когда другие отрывают меня от дела', scale: 'hostility' },
+            { text: 'Мне бы определённо понравилось, если бы преступника наказали его же преступлением', scale: 'aggressiveness' },
+            { text: 'Я не стремлюсь скрыть плохое мнение о других людях', scale: 'aggressiveness' }
+        ],
+        totalScale: 'cynicism',
+        scales: [
+            {
+                id: 'cynicism',
+                name: 'Цинизм',
+                maxScore: 78,
+                interpretation: [
+                    { min: 65, max: 78, level: 'high', label: 'Высокий показатель цинизма', attention: true },
+                    { min: 40, max: 64, level: 'high', label: 'Средний показатель с тенденцией к высокому' },
+                    { min: 26, max: 39, level: 'medium', label: 'Средний показатель с тенденцией к низкому' },
+                    { min: 13, max: 25, level: 'low', label: 'Низкий показатель цинизма' }
+                ]
+            },
+            {
+                id: 'aggressiveness',
+                name: 'Агрессивность',
+                maxScore: 54,
+                interpretation: [
+                    { min: 45, max: 54, level: 'high', label: 'Высокий показатель агрессивности', attention: true },
+                    { min: 30, max: 44, level: 'high', label: 'Средний показатель с тенденцией к высокому' },
+                    { min: 16, max: 29, level: 'medium', label: 'Средний показатель с тенденцией к низкому' },
+                    { min: 9, max: 15, level: 'low', label: 'Низкий показатель агрессивности' }
+                ]
+            },
+            {
+                id: 'hostility',
+                name: 'Враждебность',
+                maxScore: 30,
+                interpretation: [
+                    { min: 25, max: 30, level: 'high', label: 'Высокий показатель враждебности', attention: true },
+                    { min: 18, max: 24, level: 'high', label: 'Средний показатель с тенденцией к высокому' },
+                    { min: 11, max: 17, level: 'medium', label: 'Средний показатель с тенденцией к низкому' },
+                    { min: 5, max: 10, level: 'low', label: 'Низкий показатель враждебности' }
+                ]
+            }
+        ]
+    },
+
+    {
+        id: 'self-esteem-rosenberg',
+        title: 'Шкала самооценки (М. Розенберг)',
+        description: 'Опросник оценивает два компонента эмоционального отношения к себе: самоуважение и самоунижение.',
+        instruction: 'Прочитайте каждое утверждение и выберите один вариант ответа, который подходит Вам больше всего.',
+        answerOptions: [
+            { text: 'Полностью согласен', score: 2 },
+            { text: 'Согласен', score: 1 },
+            { text: 'Не согласен', score: -1 },
+            { text: 'Абсолютно не согласен', score: -2 }
+        ],
+        questions: [
+            { text: 'Я чувствую, что я достойный человек, по крайней мере, не менее, чем другие', scale: 'self-respect' },
+            { text: 'Я всегда склонен чувствовать себя неудачником', scale: 'self-abasement' },
+            { text: 'Мне кажется, у меня есть ряд хороших качеств', scale: 'self-respect' },
+            { text: 'Я способен кое-что сделать не хуже, чем большинство', scale: 'self-respect' },
+            { text: 'Мне кажется, что мне особенно нечем гордиться', scale: 'self-abasement' },
+            { text: 'Я к себе хорошо отношусь', scale: 'self-respect' },
+            { text: 'В целом я удовлетворён собой', scale: 'self-respect' },
+            { text: 'Мне бы хотелось больше уважать себя', scale: 'self-abasement' },
+            { text: 'Иногда я ясно чувствую свою бесполезность', scale: 'self-abasement' },
+            { text: 'Иногда я думаю, что я во всём не хорош', scale: 'self-abasement' }
+        ],
+        totalScale: 'self-respect',
+        scales: [
+            {
+                id: 'self-respect',
+                name: 'Самоуважение',
+                maxScore: 10,
+                interpretation: [
+                    { min: 8, max: 10, level: 'high', label: 'Очень высокое, гипертрофированное самоуважение', attention: true },
+                    { min: 5, max: 7, level: 'high', label: 'Достаточно высокое самоуважение' },
+                    { min: 2, max: 4, level: 'medium', label: 'В основном уважительное отношение к себе' },
+                    { min: -10, max: 1, level: 'low', label: 'Очень низкое самоуважение', attention: true }
+                ]
+            },
+            {
+                id: 'self-abasement',
+                name: 'Самоунижение',
+                maxScore: 10,
+                interpretation: [
+                    { min: 8, max: 10, level: 'high', label: 'Полное неуважение и неприятие себя', attention: true },
+                    { min: 5, max: 7, level: 'high', label: 'Выраженное самоунижение', attention: true },
+                    { min: 2, max: 4, level: 'medium', label: 'Требовательное отношение к себе' },
+                    { min: -10, max: 1, level: 'low', label: 'Отсутствие или минимальное самоунижение' }
+                ]
+            }
+        ]
+    },
+
+    {
+        id: 'educational-relationships-adolescents-kozhukhar',
+        title: 'Качество межличностных отношений в образовательной среде для подростков (Г. Кожухарь)',
+        description: 'Опросник формирует профиль восьми характеристик отношений в школе и индексы позитивного и негативного отношения.',
+        instruction: 'Оцените, насколько каждое суждение соответствует ситуации в Вашей школе. Выберите один вариант ответа; правильных и неправильных ответов нет.',
+        answerOptions: [
+            { text: 'Полностью согласен', score: 4 },
+            { text: 'Скорее согласен', score: 3 },
+            { text: 'Трудно сказать', score: 2 },
+            { text: 'Скорее не согласен', score: 1 },
+            { text: 'Совершенно не согласен', score: 0 }
+        ],
+        questions: [
+            { text: 'Большинству учителей в нашей школе можно доверять', scale: ['trust', 'trust-adults', 'positive-index'] },
+            { text: 'Ребята нашей школы чаще всего думают только о себе', scale: ['trust', 'trust-students', 'positive-index'], reverse: true },
+            { text: 'Педагоги чаще всего стремятся быть полезными для меня и для других учащихся', scale: ['trust', 'trust-adults', 'positive-index'] },
+            { text: 'Большинство ребят нашей школы ведут себя честно в разных ситуациях', scale: ['trust', 'trust-students', 'positive-index'] },
+            { text: 'Во взаимодействии с учителями в нашей школе нужно соблюдать осторожность', scale: ['trust', 'trust-adults', 'positive-index'], reverse: true },
+            { text: 'Большинству ребят в нашей школе можно доверять', scale: ['trust', 'trust-students', 'positive-index'] },
+
+            { text: 'Учителя не стремятся скрыть плохое мнение по поводу учащихся', scale: ['aggression', 'aggression-adults', 'negative-index'] },
+            { text: 'Если кто-то из одноклассников поступает плохо, другие обязательно отвечают им тем же, хотя бы из принципа', scale: ['aggression', 'aggression-students', 'negative-index'] },
+            { text: 'Учителя могут вести себя дружелюбно с теми ребятами, которые, по их мнению, поступают неверно', scale: ['aggression', 'aggression-adults', 'negative-index'], reverse: true },
+            { text: 'Ребята нашей школы временами грубят тем, кто ведёт себя невежливо по отношению к ним и действует им на нервы', scale: ['aggression', 'aggression-students', 'negative-index'] },
+            { text: 'Учителя часто обвиняют ребят ни за что', scale: ['aggression', 'aggression-adults', 'negative-index'] },
+            { text: 'Во время общения ребята, как правило, отчаянно отстаивают свою точку зрения', scale: ['aggression', 'aggression-students', 'negative-index'] },
+
+            { text: 'Я чаще всего могу быть уверен в учителях нашей школы', scale: ['benevolence', 'benevolence-adults', 'positive-index'] },
+            { text: 'Доверять ребятам в нашем классе небезопасно, так как они могут легко использовать это в своих интересах', scale: ['benevolence', 'benevolence-students', 'positive-index'], reverse: true },
+            { text: 'Педагоги и другие работники школы являются лучшим гарантом безопасности в нашей школе', scale: ['benevolence', 'benevolence-adults', 'positive-index'] },
+            { text: 'Ребята нашей школы скорее будут помогать друг другу, чем оскорблять друг друга', scale: ['benevolence', 'benevolence-students', 'positive-index'] },
+            { text: 'В нашей школе необходимо стремиться угождать всем педагогам независимо от собственных принципов', scale: ['benevolence', 'benevolence-adults', 'positive-index'], reverse: true },
+            { text: 'В отношениях среди ребят нашей школы преобладает доброжелательность', scale: ['benevolence', 'benevolence-students', 'positive-index'] },
+
+            { text: 'С педагогами нашей школы я предпочитаю не спорить', scale: ['conflict', 'conflict-adults', 'negative-index'] },
+            { text: 'Ученики нашего класса готовы прислушиваться к мнениям друг друга', scale: ['conflict', 'conflict-students', 'negative-index'], reverse: true },
+            { text: 'Учителя нашей школы допускают в общении с ребятами тон, не терпящий возражений, и грубость', scale: ['conflict', 'conflict-adults', 'negative-index'] },
+            { text: 'Ребята не уступают друг другу в споре, каждый хочет добиться победы', scale: ['conflict', 'conflict-students', 'negative-index'] },
+            { text: 'Учителя нашей школы при решении разных вопросов пытаются выяснить, с чем я согласен, а с чем не согласен', scale: ['conflict', 'conflict-adults', 'negative-index'], reverse: true },
+            { text: 'Ребята в нашей школе во время общения не поддаются провокациям и не заводятся', scale: ['conflict', 'conflict-students', 'negative-index'], reverse: true },
+
+            { text: 'Учителям нравится проводить время вместе с нами', scale: ['acceptance', 'acceptance-adults', 'positive-index'] },
+            { text: 'Мне нравятся ребята нашей школы, с которыми я знаком', scale: ['acceptance', 'acceptance-students', 'positive-index'], reverse: true },
+            { text: 'Педагоги и другие работники школы думают только о себе', scale: ['acceptance', 'acceptance-adults', 'positive-index'] },
+            { text: 'Большинство ребят чувствуют себя комфортно в школе', scale: ['acceptance', 'acceptance-students', 'positive-index'], reverse: true },
+            { text: 'Учителей нашей школы достаточно легко ввести в заблуждение', scale: ['acceptance', 'acceptance-adults', 'positive-index'] },
+            { text: 'Ребята нашего класса думают о себе только положительно и редко обращаются к своим отрицательным качествам', scale: ['acceptance', 'acceptance-students', 'positive-index'] },
+
+            { text: 'Учителя часто разочаровывали и разочаровывают меня', scale: ['hostility-rel', 'hostility-rel-adults', 'negative-index'] },
+            { text: 'В нашем классе есть учащиеся, которые настолько мне неприятны, что я невольно радуюсь, когда их постигают неудачи', scale: ['hostility-rel', 'hostility-rel-students', 'negative-index'] },
+            { text: 'Я не всегда легко соглашаюсь с учителями и другими работниками нашей школы', scale: ['hostility-rel', 'hostility-rel-adults', 'negative-index'] },
+            { text: 'Некоторые ребята в нашем классе имеют привычки, которые действуют мне на нервы', scale: ['hostility-rel', 'hostility-rel-students', 'negative-index'] },
+            { text: 'Некоторые учителя вызывают во мне враждебность', scale: ['hostility-rel', 'hostility-rel-adults', 'negative-index'] },
+            { text: 'Меня раздражает, когда ребята отрывают меня от дела', scale: ['hostility-rel', 'hostility-rel-students', 'negative-index'] },
+
+            { text: 'Педагоги и другие работники школы постоянно делают кому-либо замечания', scale: ['tolerance', 'tolerance-adults', 'positive-index'], reverse: true },
+            { text: 'Меня раздражают ребята школы другой национальности', scale: ['tolerance', 'tolerance-students', 'positive-index'], reverse: true },
+            { text: 'Взрослые раздражаются, если ребята не соглашаются с их правильным, как они считают, мнением', scale: ['tolerance', 'tolerance-adults', 'positive-index'], reverse: true },
+            { text: 'Мне трудно ладить с ребятами, у которых плохой характер', scale: ['tolerance', 'tolerance-students', 'positive-index'], reverse: true },
+            { text: 'Чаще всего я из принципа настаиваю на своём мнении, даже если понимаю, что партнёр прав', scale: ['tolerance', 'tolerance-adults', 'positive-index'], reverse: true },
+            { text: 'Взрослые нашей школы с трудом переносят шумные детские игры', scale: ['tolerance', 'tolerance-students', 'positive-index'], reverse: true },
+
+            { text: 'Наилучший способ поладить со старшими людьми в нашей школе — говорить им то, что они хотели бы услышать', scale: ['manipulation', 'manipulation-adults', 'negative-index'] },
+            { text: 'Большинство ребят в нашей школе в сущности хорошие и добрые', scale: ['manipulation', 'manipulation-students', 'negative-index'], reverse: true },
+            { text: 'Многие педагоги нашей школы любят похвалиться, когда для этого нет достаточных оснований', scale: ['manipulation', 'manipulation-adults', 'negative-index'] },
+            { text: 'Открывать причину своих действий другим ребятам нужно только в том случае, если это полезно и для тебя', scale: ['manipulation', 'manipulation-students', 'negative-index'] },
+            { text: 'Большинство ребят работают в полную силу только в том случае, если старшие заставляют их это делать', scale: ['manipulation', 'manipulation-adults', 'negative-index'] },
+            { text: 'Ребята нашего класса считают, что полностью доверять однокласснику — это значит напрашиваться на неприятности', scale: ['manipulation', 'manipulation-students', 'negative-index'] }
+        ],
+        totalScale: 'positive-index',
+        scales: [
+            relationshipIndexScale('positive-index', 'Индекс позитивного отношения'),
+            relationshipIndexScale('negative-index', 'Индекс негативного отношения'),
+            relationshipBlockScale('trust', 'Доверие'),
+            relationshipBlockScale('aggression', 'Агрессивность'),
+            relationshipBlockScale('benevolence', 'Доброжелательность'),
+            relationshipBlockScale('conflict', 'Конфликтность'),
+            relationshipBlockScale('acceptance', 'Принятие'),
+            relationshipBlockScale('hostility-rel', 'Враждебность'),
+            relationshipBlockScale('tolerance', 'Толерантность'),
+            relationshipBlockScale('manipulation', 'Манипулятивное отношение'),
+            relationshipSubscale('trust-adults', 'Доверие: взрослые'),
+            relationshipSubscale('trust-students', 'Доверие: учащиеся'),
+            relationshipSubscale('aggression-adults', 'Агрессивность: взрослые'),
+            relationshipSubscale('aggression-students', 'Агрессивность: учащиеся'),
+            relationshipSubscale('benevolence-adults', 'Доброжелательность: взрослые'),
+            relationshipSubscale('benevolence-students', 'Доброжелательность: учащиеся'),
+            relationshipSubscale('conflict-adults', 'Конфликтность: взрослые'),
+            relationshipSubscale('conflict-students', 'Конфликтность: учащиеся'),
+            relationshipSubscale('acceptance-adults', 'Принятие: взрослые'),
+            relationshipSubscale('acceptance-students', 'Принятие: учащиеся'),
+            relationshipSubscale('hostility-rel-adults', 'Враждебность: взрослые'),
+            relationshipSubscale('hostility-rel-students', 'Враждебность: учащиеся'),
+            relationshipSubscale('tolerance-adults', 'Толерантность: взрослые'),
+            relationshipSubscale('tolerance-students', 'Толерантность: учащиеся'),
+            relationshipSubscale('manipulation-adults', 'Манипулятивное отношение: взрослые'),
+            relationshipSubscale('manipulation-students', 'Манипулятивное отношение: учащиеся')
+        ]
     }
 ];
 
 /* ---------- Хелперы (доступны глобально на всех страницах) ---------- */
 
 // Пользовательские методики из БД (загружаются страницей через /api/methodologies).
-window.CUSTOM_METHODOLOGIES = [];
-window.registerMethodologies = function (arr) {
-    window.CUSTOM_METHODOLOGIES = Array.isArray(arr) ? arr : [];
+PSY_ROOT.CUSTOM_METHODOLOGIES = [];
+PSY_ROOT.registerMethodologies = function (arr) {
+    PSY_ROOT.CUSTOM_METHODOLOGIES = Array.isArray(arr) ? arr : [];
 };
 
 // Все методики: встроенные (этот файл) + пользовательские (из БД).
-window.allMethodologies = function () {
-    return [].concat(window.PSY_METHODOLOGIES || [], window.CUSTOM_METHODOLOGIES || []);
+PSY_ROOT.allMethodologies = function () {
+    return [].concat(PSY_ROOT.PSY_METHODOLOGIES || [], PSY_ROOT.CUSTOM_METHODOLOGIES || []);
 };
 
 // Поиск методики по точному названию теста (среди встроенных и пользовательских)
-window.findMethodologyByTitle = function (title) {
+PSY_ROOT.findMethodologyByTitle = function (title) {
     if (!title) return null;
     const n = String(title).trim();
-    return window.allMethodologies().find(m => String(m.title).trim() === n) || null;
+    return PSY_ROOT.allMethodologies().find(m => String(m.title).trim() === n) || null;
 };
 
 // Поиск методики по id
-window.findMethodologyById = function (id) {
-    return window.allMethodologies().find(m => m.id === id) || null;
+PSY_ROOT.findMethodologyById = function (id) {
+    return PSY_ROOT.allMethodologies().find(m => m.id === id) || null;
 };
 
 // Определения шкал методики. Для одношкальной — собираем единственную шкалу 'total'.
@@ -197,6 +695,53 @@ function getScaleDefs(meth) {
         maxScore: meth ? meth.maxScore : undefined,
         interpretation: (meth && meth.interpretation) || []
     }];
+}
+
+function bullyingRanges() {
+    return [
+        { min: 0, max: 1, level: 'low', label: 'Слабо выражен' },
+        { min: 1.000001, max: 2.999999, level: 'medium', label: 'Умеренно выражен (эпизодически)', attention: true },
+        { min: 3, max: 4, level: 'high', label: 'Ярко выражен (регулярно, систематически)', attention: true }
+    ];
+}
+
+function relationshipBlockScale(id, name) {
+    return {
+        id,
+        name,
+        maxScore: 24,
+        interpretation: [
+            { min: 0, max: 7, level: 'low', label: `Низкий уровень: ${name.toLowerCase()}` },
+            { min: 8, max: 16, level: 'medium', label: `Средний уровень: ${name.toLowerCase()}` },
+            { min: 17, max: 24, level: 'high', label: `Высокий уровень: ${name.toLowerCase()}` }
+        ]
+    };
+}
+
+function relationshipSubscale(id, name) {
+    return {
+        id,
+        name,
+        maxScore: 12,
+        display: false,
+        interpretation: [
+            { min: 0, max: 3, level: 'low', label: 'Низкий уровень' },
+            { min: 4, max: 8, level: 'medium', label: 'Средний уровень' },
+            { min: 9, max: 12, level: 'high', label: 'Высокий уровень' }
+        ]
+    };
+}
+
+function relationshipIndexScale(id, name) {
+    return {
+        id,
+        name,
+        maxScore: 24,
+        calculation: 'average',
+        multiplier: 6,
+        precision: 2,
+        interpretation: []
+    };
 }
 
 // Приводим вопросы к единому виду: { text, scale, reverse, options }.
@@ -228,12 +773,12 @@ function interpretRange(ranges, score) {
 }
 
 // Обратная совместимость: интерпретация по общим диапазонам методики.
-window.interpretMethodology = function (meth, score) {
+PSY_ROOT.interpretMethodology = function (meth, score) {
     return interpretRange(meth && meth.interpretation, score);
 };
 
 // Признак «методики со взвешенными вариантами» по списку вопросов опросника
-window.hasWeightedOptions = function (questions) {
+PSY_ROOT.hasWeightedOptions = function (questions) {
     return Array.isArray(questions) && questions.some(q =>
         Array.isArray(q.options) &&
         q.options.some(o => o && typeof o === 'object' && typeof o.score === 'number')
@@ -253,14 +798,18 @@ window.hasWeightedOptions = function (questions) {
  * Учитывает: подшкалы, обратные вопросы (reverse), свои варианты у вопроса,
  * шкалы достоверности. Одношкальная методика — частный случай.
  */
-window.scoreMethodology = function (meth, answers) {
+PSY_ROOT.scoreMethodology = function (meth, answers) {
     const a = answers || {};
     const scaleDefs = getScaleDefs(meth);
     const defaultScaleId = scaleDefs[0] ? scaleDefs[0].id : 'total';
     const questions = normalizeQuestions(meth, defaultScaleId);
 
     const sums = {};
-    scaleDefs.forEach(s => { sums[s.id] = 0; });
+    const counts = {};
+    scaleDefs.forEach(s => {
+        sums[s.id] = 0;
+        counts[s.id] = 0;
+    });
 
     questions.forEach((q, idx) => {
         const ans = a[idx];
@@ -277,19 +826,50 @@ window.scoreMethodology = function (meth, answers) {
                 sc = (Math.min(...nums) + Math.max(...nums)) - sc;
             }
         }
-        if (sums[q.scale] == null) sums[q.scale] = 0;
-        sums[q.scale] += sc;
+        const targetScales = Array.isArray(q.scale) ? q.scale : [q.scale];
+        targetScales.forEach(scaleId => {
+            if (sums[scaleId] == null) sums[scaleId] = 0;
+            if (counts[scaleId] == null) counts[scaleId] = 0;
+            sums[scaleId] += sc;
+            counts[scaleId] += 1;
+        });
     });
+
+    const rawValues = {};
+    scaleDefs.forEach(scale => {
+        if (scale.calculation === 'average') {
+            const precision = Number.isInteger(scale.precision) ? scale.precision : 2;
+            const multiplier = typeof scale.multiplier === 'number' ? scale.multiplier : 1;
+            rawValues[scale.id] = counts[scale.id]
+                ? Number(((sums[scale.id] / counts[scale.id]) * multiplier).toFixed(precision))
+                : 0;
+        } else {
+            rawValues[scale.id] = sums[scale.id] || 0;
+        }
+    });
+
+    const aggregateDefs = scaleDefs.filter(s => s.aggregate);
+    if (aggregateDefs.length) {
+        const componentTotal = scaleDefs
+            .filter(s => !s.aggregate)
+            .reduce((acc, s) => acc + (rawValues[s.id] || 0), 0);
+        aggregateDefs.forEach(s => { rawValues[s.id] = componentTotal; });
+    }
 
     const scales = scaleDefs.map(s => ({
         id: s.id,
         name: s.name || s.id,
-        raw: sums[s.id] || 0,
+        raw: rawValues[s.id] || 0,
         maxScore: s.maxScore,
-        interp: interpretRange(s.interpretation, sums[s.id] || 0)
+        display: s.display !== false,
+        interp: interpretRange(s.interpretation, rawValues[s.id] || 0)
     }));
 
-    const total = scaleDefs.reduce((acc, s) => acc + (sums[s.id] || 0), 0);
+    const total = meth && meth.totalScale && rawValues[meth.totalScale] != null
+        ? rawValues[meth.totalScale]
+        : aggregateDefs.length
+            ? (rawValues[aggregateDefs[0].id] || 0)
+            : scaleDefs.reduce((acc, s) => acc + (rawValues[s.id] || 0), 0);
 
     const validity = ((meth && meth.validity) || []).map(v => {
         const value = sums[v.scale] != null ? sums[v.scale] : 0;
@@ -311,11 +891,24 @@ window.scoreMethodology = function (meth, answers) {
  * диапазон интерпретации отмечен флагом attention: true (это задаёт сама методика).
  * -> { atRisk: boolean, reasons: [{ scale, label }] }
  */
-window.resultAttention = function (meth, answers) {
-    if (!meth || typeof window.scoreMethodology !== 'function') return { atRisk: false, reasons: [] };
-    const sc = window.scoreMethodology(meth, answers || {});
+PSY_ROOT.resultAttention = function (meth, answers) {
+    if (!meth || typeof PSY_ROOT.scoreMethodology !== 'function') return { atRisk: false, reasons: [] };
+    const sc = PSY_ROOT.scoreMethodology(meth, answers || {});
     const reasons = sc.scales
         .filter(s => s.interp && s.interp.attention)
         .map(s => ({ scale: s.name, label: s.interp.label }));
     return { atRisk: reasons.length > 0, reasons };
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        PSY_METHODOLOGIES: PSY_ROOT.PSY_METHODOLOGIES,
+        allMethodologies: PSY_ROOT.allMethodologies,
+        findMethodologyByTitle: PSY_ROOT.findMethodologyByTitle,
+        findMethodologyById: PSY_ROOT.findMethodologyById,
+        interpretMethodology: PSY_ROOT.interpretMethodology,
+        hasWeightedOptions: PSY_ROOT.hasWeightedOptions,
+        scoreMethodology: PSY_ROOT.scoreMethodology,
+        resultAttention: PSY_ROOT.resultAttention
+    };
+}

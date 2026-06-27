@@ -1,19 +1,67 @@
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const express = require('express');
 const mysql2 = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const cors = require('cors');
+const crypto = require('crypto');
 const path = require('path');
+const {
+    findMethodologyByTitle,
+    scoreMethodology
+} = require('./public/methodologies');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'psych-diagnostic-secret-key-2024';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+if (process.env.TRUST_PROXY === 'true') app.set('trust proxy', 1);
+
+function requiredProductionEnv(name) {
+    const value = String(process.env[name] || '').trim();
+    if (IS_PRODUCTION && !value) {
+        throw new Error(`В production обязательна переменная окружения ${name}`);
+    }
+    return value;
+}
+
+function validateConfiguredSecret(name, value, minimumLength) {
+    if (!value) return;
+    if (value.length < minimumLength || /replace|changeme|example/i.test(value)) {
+        throw new Error(`${name} должен быть уникальным секретом длиной не менее ${minimumLength} символов`);
+    }
+}
+
+const configuredJwtSecret = requiredProductionEnv('JWT_SECRET');
+const JWT_SECRET = configuredJwtSecret || crypto.randomBytes(48).toString('hex');
+const DB_PASSWORD = requiredProductionEnv('DB_PASSWORD');
+const SUPERADMIN_PASSWORD = requiredProductionEnv('SUPERADMIN_PASSWORD');
+validateConfiguredSecret('JWT_SECRET', configuredJwtSecret, 32);
+validateConfiguredSecret('DB_PASSWORD', DB_PASSWORD, 12);
+validateConfiguredSecret('SUPERADMIN_PASSWORD', SUPERADMIN_PASSWORD, 12);
+
+if (!configuredJwtSecret) {
+    console.warn(' JWT_SECRET не задан: используется временный случайный ключ только для этой сессии.');
+}
+if (!DB_PASSWORD) {
+    console.warn(' DB_PASSWORD не задан: подключение к MySQL выполняется с пустым паролем.');
+}
 
 // Middleware
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader(
+        'Content-Security-Policy',
+        "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net data:; " +
+        "img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    );
+    next();
+});
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: process.env.JSON_BODY_LIMIT || '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ============================================
@@ -24,7 +72,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const baseDbConfig = {
     host: process.env.DB_HOST || '127.0.0.1',
     user: process.env.DB_USER || 'psyagent_user',
-    password: process.env.DB_PASSWORD || 'Ewe123123!',
+    password: DB_PASSWORD,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
@@ -60,44 +108,50 @@ function safeDbName(name) {
     return String(name).replace(/[^a-zA-Z0-9_]/g, '');
 }
 
-// Проверка подключения + авто-создание недостающих таблиц
-async function testConnection() {
+async function runSchemaMigration(db, sql, ignoredCodes = []) {
     try {
-        const conn = await pool.getConnection();
-        console.log(' Подключение к базе данных успешно!');
-        conn.release();
-        await ensureSchema(pool);
-        await ensureControlSchema();
-        await syncTenantSchemas();
+        await db.query(sql);
     } catch (error) {
-        console.error(' Ошибка подключения к БД:', error.message);
+        if (ignoredCodes.includes(error.code)) return;
+        throw error;
     }
+}
+
+// Проверка подключения + авто-создание недостающих таблиц.
+// Ошибки не подавляются: HTTP-сервер не должен принимать запросы с неготовой БД.
+async function initializeApplication() {
+    const conn = await pool.getConnection();
+    try {
+        await conn.query('SELECT 1');
+        console.log(' Подключение к базе данных успешно!');
+    } finally {
+        conn.release();
+    }
+    await ensureSchema(pool);
+    await ensureControlSchema();
+    await syncTenantSchemas();
 }
 
 // Накатывает схему на ВСЕ активные колледжи при старте (на случай дрейфа схемы).
 async function syncTenantSchemas() {
     if (!controlPool) return;
-    try {
-        const [tenants] = await controlPool.execute(
-            'SELECT db_name FROM tenants WHERE is_active = TRUE'
-        );
-        for (const t of tenants) {
-            await ensureTenantSchema(tenantPool(t.db_name));
-        }
-        console.log(` Схемы колледжей синхронизированы (${tenants.length}).`);
-    } catch (e) {
-        console.error('Ошибка синхронизации схем колледжей:', e.message);
+    const [tenants] = await controlPool.execute(
+        'SELECT db_name FROM tenants WHERE is_active = TRUE'
+    );
+    for (const t of tenants) {
+        await ensureTenantSchema(tenantPool(t.db_name));
     }
+    console.log(` Схемы колледжей синхронизированы (${tenants.length}).`);
 }
 
 // Создаёт control-БД (реестр колледжей и супер-админов) и наполняет значениями по умолчанию.
 async function ensureControlSchema() {
-    try {
-        const cName = safeDbName(CONTROL_DB_NAME);
-        await adminPool.query(`CREATE DATABASE IF NOT EXISTS \`${cName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-        controlPool = mysql2.createPool({ ...baseDbConfig, database: cName });
+    const cName = safeDbName(CONTROL_DB_NAME);
+    if (!cName) throw new Error('CONTROL_DB_NAME содержит недопустимое имя БД');
+    await adminPool.query(`CREATE DATABASE IF NOT EXISTS \`${cName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+    controlPool = mysql2.createPool({ ...baseDbConfig, database: cName });
 
-        await controlPool.query(`
+    await controlPool.query(`
             CREATE TABLE IF NOT EXISTS tenants (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 code VARCHAR(60) UNIQUE NOT NULL,
@@ -107,41 +161,53 @@ async function ensureControlSchema() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         `);
-        await controlPool.query(`
+    await controlPool.query(`
             CREATE TABLE IF NOT EXISTS platform_admins (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 username VARCHAR(100) UNIQUE NOT NULL,
                 password VARCHAR(255) NOT NULL,
                 full_name VARCHAR(255) NOT NULL,
+                token_version INT NOT NULL DEFAULT 0,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         `);
+    await runSchemaMigration(
+        controlPool,
+        'ALTER TABLE platform_admins ADD COLUMN token_version INT NOT NULL DEFAULT 0',
+        ['ER_DUP_FIELDNAME']
+    );
+    await runSchemaMigration(
+        controlPool,
+        'ALTER TABLE platform_admins ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE',
+        ['ER_DUP_FIELDNAME']
+    );
 
-        // Колледж по умолчанию = текущая БД (чтобы существующий вход работал).
-        const [tenants] = await controlPool.execute('SELECT COUNT(*) AS n FROM tenants');
-        if (tenants[0].n === 0) {
-            await controlPool.execute(
-                'INSERT INTO tenants (code, name, db_name) VALUES (?, ?, ?)',
-                ['default', 'Колледж по умолчанию', DEFAULT_DB_NAME]
-            );
-        }
-
-        // Супер-админ (владелец SaaS).
-        const [admins] = await controlPool.execute('SELECT COUNT(*) AS n FROM platform_admins');
-        if (admins[0].n === 0) {
-            const suUser = process.env.SUPERADMIN_USER || 'superadmin';
-            const suPass = process.env.SUPERADMIN_PASSWORD || 'superadmin';
-            const hash = await bcrypt.hash(suPass, 10);
-            await controlPool.execute(
-                'INSERT INTO platform_admins (username, password, full_name) VALUES (?, ?, ?)',
-                [suUser, hash, 'Супер-администратор']
-            );
-            console.log(` Супер-админ создан: ${suUser} / ${suPass} (смените пароль!)`);
-        }
-        console.log(' Control-БД готова (мультиарендность).');
-    } catch (e) {
-        console.error('Ошибка инициализации control-БД:', e.message);
+    // Колледж по умолчанию = текущая БД (чтобы существующий вход работал).
+    const [tenants] = await controlPool.execute('SELECT COUNT(*) AS n FROM tenants');
+    if (tenants[0].n === 0) {
+        await controlPool.execute(
+            'INSERT INTO tenants (code, name, db_name) VALUES (?, ?, ?)',
+            ['default', 'Колледж по умолчанию', DEFAULT_DB_NAME]
+        );
     }
+
+    // Супер-админ (владелец SaaS). Пароль никогда не имеет значения по умолчанию.
+    const [admins] = await controlPool.execute('SELECT COUNT(*) AS n FROM platform_admins');
+    if (admins[0].n === 0) {
+        const suUser = String(process.env.SUPERADMIN_USER || 'superadmin').trim();
+        const suPass = SUPERADMIN_PASSWORD;
+        if (suPass.length < 12) {
+            throw new Error('Для первого запуска задайте SUPERADMIN_PASSWORD длиной не менее 12 символов');
+        }
+        const hash = await bcrypt.hash(suPass, 12);
+        await controlPool.execute(
+            'INSERT INTO platform_admins (username, password, full_name) VALUES (?, ?, ?)',
+            [suUser, hash, 'Супер-администратор']
+        );
+        console.log(` Супер-администратор «${suUser}» создан. Пароль в журнал не выводится.`);
+    }
+    console.log(' Control-БД готова (мультиарендность).');
 }
 
 // Резолвинг колледжа по коду -> запись tenant | null
@@ -159,8 +225,7 @@ async function getTenantByCode(code) {
 // db — пул БД колледжа (по умолчанию — основная).
 async function ensureSchema(db) {
     const target = db || pool;
-    try {
-        await target.execute(`
+    await target.execute(`
             CREATE TABLE IF NOT EXISTS methodologies (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 meth_key VARCHAR(100) UNIQUE,
@@ -172,9 +237,6 @@ async function ensureSchema(db) {
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         `);
-    } catch (e) {
-        console.error('Ошибка создания таблиц:', e.message);
-    }
 }
 
 // Полная схема БД колледжа (все таблицы IF NOT EXISTS). Используется при
@@ -192,6 +254,7 @@ async function ensureTenantSchema(db) {
             group_name VARCHAR(100),
             email VARCHAR(150),
             phone VARCHAR(20),
+            token_version INT NOT NULL DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             is_active BOOLEAN DEFAULT TRUE,
@@ -217,6 +280,7 @@ async function ensureTenantSchema(db) {
             created_by INT NOT NULL,
             is_active BOOLEAN DEFAULT TRUE,
             target_groups JSON,
+            methodology_data JSON,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             FOREIGN KEY (created_by) REFERENCES users(id)
@@ -239,6 +303,7 @@ async function ensureTenantSchema(db) {
             id INT AUTO_INCREMENT PRIMARY KEY,
             user_id INT NOT NULL,
             questionnaire_id INT NOT NULL,
+            assignment_id INT NULL,
             answers JSON NOT NULL,
             score DECIMAL(10,2),
             status ENUM('in_progress','completed') DEFAULT 'in_progress',
@@ -247,7 +312,8 @@ async function ensureTenantSchema(db) {
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (questionnaire_id) REFERENCES questionnaires(id) ON DELETE CASCADE,
             KEY idx_results_user (user_id),
-            KEY idx_results_questionnaire (questionnaire_id)
+            KEY idx_results_questionnaire (questionnaire_id),
+            UNIQUE KEY uq_results_assignment (assignment_id)
         ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
         `CREATE TABLE IF NOT EXISTS assignments (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -289,34 +355,152 @@ async function ensureTenantSchema(db) {
         await db.query(sql);
     }
     // Идемпотентные миграции существующих БД колледжей.
-    try {
-        await db.query("ALTER TABLE users MODIFY COLUMN role ENUM('admin','curator','student') NOT NULL DEFAULT 'student'");
-    } catch (e) { /* enum уже актуальный */ }
+    await db.query("ALTER TABLE users MODIFY COLUMN role ENUM('admin','curator','student') NOT NULL DEFAULT 'student'");
+    await runSchemaMigration(
+        db,
+        'ALTER TABLE users ADD COLUMN token_version INT NOT NULL DEFAULT 0 AFTER phone',
+        ['ER_DUP_FIELDNAME']
+    );
+    await runSchemaMigration(
+        db,
+        'ALTER TABLE questionnaires ADD COLUMN methodology_data JSON NULL AFTER target_groups',
+        ['ER_DUP_FIELDNAME']
+    );
+    await runSchemaMigration(
+        db,
+        'ALTER TABLE results ADD COLUMN assignment_id INT NULL AFTER questionnaire_id',
+        ['ER_DUP_FIELDNAME']
+    );
+    await runSchemaMigration(
+        db,
+        'ALTER TABLE results ADD UNIQUE KEY uq_results_assignment (assignment_id)',
+        ['ER_DUP_KEYNAME']
+    );
+    await runSchemaMigration(
+        db,
+        `ALTER TABLE results
+         ADD CONSTRAINT fk_results_assignment
+         FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE`,
+        ['ER_FK_DUP_NAME', 'ER_DUP_KEYNAME']
+    );
 }
-testConnection();
-
 // ============================================
 // АУТЕНТИФИКАЦИЯ И MIDDLEWARE
 // ============================================
 
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_FAILURES = 8;
+const loginFailures = new Map();
+
+function loginAttemptKey(req) {
+    return String(req.ip || req.socket.remoteAddress || 'unknown');
+}
+
+function loginRateLimit(req, res, next) {
+    const key = loginAttemptKey(req);
+    const now = Date.now();
+    const state = loginFailures.get(key);
+    if (state && state.resetAt > now && state.count >= LOGIN_MAX_FAILURES) {
+        const retryAfter = Math.ceil((state.resetAt - now) / 1000);
+        res.setHeader('Retry-After', String(retryAfter));
+        return res.status(429).json({ error: 'Слишком много попыток входа. Повторите позже.' });
+    }
+    if (state && state.resetAt <= now) loginFailures.delete(key);
+    req.loginAttemptKey = key;
+    next();
+}
+
+function recordLoginFailure(req) {
+    const key = req.loginAttemptKey || loginAttemptKey(req);
+    const now = Date.now();
+    const state = loginFailures.get(key);
+    if (!state || state.resetAt <= now) {
+        loginFailures.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+    } else {
+        state.count += 1;
+    }
+    if (loginFailures.size > 5000) {
+        for (const [entryKey, entry] of loginFailures) {
+            if (entry.resetAt <= now) loginFailures.delete(entryKey);
+        }
+    }
+}
+
+function clearLoginFailures(req) {
+    loginFailures.delete(req.loginAttemptKey || loginAttemptKey(req));
+}
+
 // Middleware проверки JWT токена
-function authenticateToken(req, res, next) {
+async function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-    
-    if (!token) {
+    const [scheme, token] = String(authHeader || '').split(' ');
+
+    if (scheme !== 'Bearer' || !token) {
         return res.status(401).json({ error: 'Требуется авторизация' });
     }
-    
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) {
+
+    let claims;
+    try {
+        claims = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+    } catch (_) {
+        return res.status(403).json({ error: 'Недействительный токен' });
+    }
+
+    try {
+        if (claims.accountType === 'platform') {
+            if (!controlPool) return res.status(503).json({ error: 'Control-БД недоступна' });
+            const [[admin]] = await controlPool.execute(
+                `SELECT id, username, full_name, token_version
+                 FROM platform_admins WHERE id = ? AND is_active = TRUE`,
+                [claims.sub]
+            );
+            if (!admin || Number(claims.tokenVersion) !== Number(admin.token_version)) {
+                return res.status(403).json({ error: 'Сессия завершена. Войдите снова.' });
+            }
+            req.user = {
+                id: admin.id,
+                username: admin.username,
+                fullName: admin.full_name,
+                role: 'super_admin'
+            };
+            req.db = null;
+            return next();
+        }
+
+        if (claims.accountType !== 'tenant' || !claims.tenantCode) {
             return res.status(403).json({ error: 'Недействительный токен' });
         }
-        req.user = user;
-        // Все запросы пользователя идут в БД его колледжа (по умолчанию — основная БД).
-        req.db = tenantPool(user.tenantDb || DEFAULT_DB_NAME);
+
+        // БД, роль и группа никогда не берутся из JWT: они перепроверяются на каждом запросе.
+        const tenant = await getTenantByCode(claims.tenantCode);
+        if (!tenant) {
+            return res.status(403).json({ error: 'Колледж отключён или не найден' });
+        }
+        const db = tenantPool(tenant.db_name);
+        const [[user]] = await db.execute(
+            `SELECT id, username, full_name, role, group_name, token_version
+             FROM users WHERE id = ? AND is_active = TRUE`,
+            [claims.sub]
+        );
+        if (!user || Number(claims.tokenVersion) !== Number(user.token_version)) {
+            return res.status(403).json({ error: 'Сессия завершена. Войдите снова.' });
+        }
+
+        req.user = {
+            id: user.id,
+            username: user.username,
+            fullName: user.full_name,
+            role: user.role,
+            group: user.group_name,
+            tenantCode: tenant.code
+        };
+        req.tenant = tenant;
+        req.db = db;
         next();
-    });
+    } catch (error) {
+        console.error('Ошибка проверки сессии:', error.message);
+        res.status(500).json({ error: 'Ошибка проверки сессии' });
+    }
 }
 
 // Middleware проверки роли администратора
@@ -343,6 +527,13 @@ function requireStaff(req, res, next) {
     next();
 }
 
+function requireStudent(req, res, next) {
+    if (req.user.role !== 'student') {
+        return res.status(403).json({ error: 'Доступ разрешён только студентам' });
+    }
+    next();
+}
+
 // Логирование действий (db — пул БД колледжа)
 async function logAction(db, userId, action, entityType, entityId, details = null, ipAddress = null) {
     try {
@@ -353,12 +544,152 @@ async function logAction(db, userId, action, entityType, entityId, details = nul
     } catch (e) { /* игнорируем ошибки логирования */ }
 }
 
+function parseJsonValue(value, fallback = null) {
+    if (value == null) return fallback;
+    if (typeof value !== 'string') return value;
+    try {
+        return JSON.parse(value);
+    } catch (_) {
+        return fallback;
+    }
+}
+
+function optionText(option) {
+    return option && typeof option === 'object' ? option.text : option;
+}
+
+function isPlainObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validateQuestionnaireAnswers(questions, answers) {
+    if (!isPlainObject(answers)) {
+        return 'Ответы должны быть объектом';
+    }
+
+    for (let idx = 0; idx < questions.length; idx++) {
+        const question = questions[idx];
+        const answer = answers[idx];
+        const isEmpty = answer == null ||
+            (typeof answer === 'string' && answer.trim() === '') ||
+            (Array.isArray(answer) && answer.length === 0);
+
+        if (question.is_required && isEmpty) {
+            return `Ответьте на обязательный вопрос №${idx + 1}`;
+        }
+        if (isEmpty) continue;
+
+        const options = parseJsonValue(question.options, []);
+        const allowed = Array.isArray(options) ? options.map(optionText) : [];
+
+        if (question.question_type === 'single') {
+            if (typeof answer !== 'string' || !allowed.includes(answer)) {
+                return `Недопустимый ответ на вопрос №${idx + 1}`;
+            }
+        } else if (question.question_type === 'multiple') {
+            if (!Array.isArray(answer) ||
+                new Set(answer).size !== answer.length ||
+                answer.some(item => typeof item !== 'string' || !allowed.includes(item))) {
+                return `Недопустимый ответ на вопрос №${idx + 1}`;
+            }
+        } else if (question.question_type === 'scale') {
+            const numeric = Number(answer);
+            if (!Number.isFinite(numeric) || numeric < question.scale_min || numeric > question.scale_max) {
+                return `Значение шкалы вне диапазона в вопросе №${idx + 1}`;
+            }
+        } else if (question.question_type === 'text') {
+            if (typeof answer !== 'string' || answer.length > 10000) {
+                return `Недопустимый текстовый ответ на вопрос №${idx + 1}`;
+            }
+        }
+    }
+    return null;
+}
+
+function fallbackQuestionnaireScore(questions, answers) {
+    const hasWeights = questions.some(question => {
+        const options = parseJsonValue(question.options, []);
+        return Array.isArray(options) && options.some(
+            option => option && typeof option === 'object' && typeof option.score === 'number'
+        );
+    });
+
+    if (hasWeights) {
+        let sum = 0;
+        questions.forEach((question, idx) => {
+            const selected = Array.isArray(answers[idx]) ? answers[idx] : [answers[idx]];
+            const options = parseJsonValue(question.options, []);
+            selected.forEach(answer => {
+                const option = Array.isArray(options)
+                    ? options.find(candidate => optionText(candidate) === answer)
+                    : null;
+                if (option && typeof option === 'object' && typeof option.score === 'number') {
+                    sum += option.score;
+                }
+            });
+        });
+        return sum;
+    }
+
+    const scaleAnswers = questions
+        .map((question, idx) => question.question_type === 'scale' ? Number(answers[idx]) : null)
+        .filter(value => Number.isFinite(value));
+    return scaleAnswers.length
+        ? Number((scaleAnswers.reduce((sum, value) => sum + value, 0) / scaleAnswers.length).toFixed(2))
+        : 0;
+}
+
+function deriveResultMetadata(result) {
+    const answers = parseJsonValue(result && result.answers, {});
+    const snapshot = parseJsonValue(result && result.methodology_data, null);
+    const methodology = snapshot || findMethodologyByTitle(result && result.questionnaire_title);
+
+    if (!methodology) {
+        return {
+            ...result,
+            answers,
+            interpretation_level: null,
+            interpretation_label: null,
+            at_risk: false,
+            risk_reasons: []
+        };
+    }
+
+    const scored = scoreMethodology(methodology, answers);
+    const primary = scored.primary && scored.primary.interp;
+    const riskReasons = scored.scales
+        .filter(scale => scale.interp && scale.interp.attention)
+        .map(scale => ({ scale: scale.name, label: scale.interp.label }));
+
+    return {
+        ...result,
+        answers,
+        interpretation_level: primary ? primary.level : null,
+        interpretation_label: primary ? primary.label : null,
+        at_risk: riskReasons.length > 0,
+        risk_reasons: riskReasons
+    };
+}
+
+async function resolveMethodologyForQuestionnaire(db, questionnaire) {
+    const snapshot = parseJsonValue(questionnaire.methodology_data, null);
+    if (snapshot && typeof snapshot === 'object') return snapshot;
+
+    const builtin = findMethodologyByTitle(questionnaire.title);
+    if (builtin) return builtin;
+
+    const [rows] = await db.execute(
+        'SELECT data FROM methodologies WHERE title = ? AND is_active = TRUE ORDER BY id DESC LIMIT 1',
+        [questionnaire.title]
+    );
+    return rows.length ? parseJsonValue(rows[0].data, null) : null;
+}
 // ============================================
 // API РОУТЫ - АУТЕНТИФИКАЦИЯ
 // ============================================
 
 // Вход в систему
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginRateLimit, async (req, res) => {
     try {
         const { username, password, college } = req.body;
 
@@ -370,16 +701,18 @@ app.post('/api/auth/login', async (req, res) => {
         if (String(college || '').trim().toLowerCase() === 'platform') {
             if (!controlPool) return res.status(503).json({ error: 'Control-БД недоступна' });
             const [admins] = await controlPool.execute(
-                'SELECT * FROM platform_admins WHERE username = ?', [username]
+                'SELECT * FROM platform_admins WHERE username = ? AND is_active = TRUE', [username]
             );
             if (admins.length === 0 || !(await bcrypt.compare(password, admins[0].password))) {
+                recordLoginFailure(req);
                 return res.status(401).json({ error: 'Неверный логин или пароль' });
             }
             const sa = admins[0];
             const token = jwt.sign(
-                { id: sa.id, role: 'super_admin', fullName: sa.full_name },
-                JWT_SECRET, { expiresIn: '24h' }
+                { sub: sa.id, accountType: 'platform', tokenVersion: sa.token_version },
+                JWT_SECRET, { algorithm: 'HS256', expiresIn: '8h' }
             );
+            clearLoginFailures(req);
             return res.json({
                 token,
                 user: { id: sa.id, username: sa.username, fullName: sa.full_name, role: 'super_admin' }
@@ -389,7 +722,8 @@ app.post('/api/auth/login', async (req, res) => {
         // Вход в конкретный колледж (пустой код → колледж по умолчанию).
         const tenant = await getTenantByCode(college);
         if (!tenant) {
-            return res.status(401).json({ error: 'Колледж не найден' });
+            recordLoginFailure(req);
+            return res.status(401).json({ error: 'Неверный логин, пароль или код колледжа' });
         }
         const db = tenantPool(tenant.db_name);
 
@@ -399,6 +733,7 @@ app.post('/api/auth/login', async (req, res) => {
         );
 
         if (users.length === 0) {
+            recordLoginFailure(req);
             return res.status(401).json({ error: 'Неверный логин или пароль' });
         }
 
@@ -406,15 +741,22 @@ app.post('/api/auth/login', async (req, res) => {
         const validPassword = await bcrypt.compare(password, user.password);
 
         if (!validPassword) {
+            recordLoginFailure(req);
             return res.status(401).json({ error: 'Неверный логин или пароль' });
         }
 
         const token = jwt.sign(
-            { id: user.id, role: user.role, fullName: user.full_name, tenantDb: tenant.db_name, tenantCode: tenant.code, group: user.group_name },
+            {
+                sub: user.id,
+                accountType: 'tenant',
+                tenantCode: tenant.code,
+                tokenVersion: user.token_version
+            },
             JWT_SECRET,
-            { expiresIn: '24h' }
+            { algorithm: 'HS256', expiresIn: '8h' }
         );
 
+        clearLoginFailures(req);
         await logAction(db, user.id, 'LOGIN', 'user', user.id, { success: true });
 
         res.json({
@@ -438,6 +780,14 @@ app.post('/api/auth/login', async (req, res) => {
 // Получение текущего пользователя
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
     try {
+        if (req.user.role === 'super_admin') {
+            return res.json({
+                id: req.user.id,
+                username: req.user.username,
+                full_name: req.user.fullName,
+                role: req.user.role
+            });
+        }
         const [users] = await req.db.execute(
             'SELECT id, username, full_name, role, birth_date, group_name, email, phone, created_at FROM users WHERE id = ?',
             [req.user.id]
@@ -535,6 +885,9 @@ app.post('/api/students', authenticateToken, requireAdmin, async (req, res) => {
         if (!username || !password || !full_name || !birth_date) {
             return res.status(400).json({ error: 'Заполните обязательные поля' });
         }
+        if (String(password).length < 8) {
+            return res.status(400).json({ error: 'Пароль должен быть не короче 8 символов' });
+        }
         
         const hashedPassword = await bcrypt.hash(password, 10);
         
@@ -556,7 +909,7 @@ app.post('/api/students', authenticateToken, requireAdmin, async (req, res) => {
                 [userId, family_type || 'full', lives_with || '', school || null, home_address || null]
             );
             
-            await logAction(req.db, req.user.id, 'CREATE_STUDENT', 'user', userId, { fullName: full_name });
+            await logAction(conn, req.user.id, 'CREATE_STUDENT', 'user', userId, { fullName: full_name });
             
             await conn.commit();
             res.status(201).json({ message: 'Студент создан успешно', userId });
@@ -586,13 +939,18 @@ app.put('/api/students/:id', authenticateToken, requireAdmin, async (req, res) =
         
         try {
             // Обновляем основную информацию
-            await conn.execute(
-                `UPDATE users SET full_name = ?, birth_date = ?, group_name = ?, 
+            const [userUpdate] = await conn.execute(
+                `UPDATE users SET full_name = ?, birth_date = ?, group_name = ?,
                  email = ?, phone = ?, updated_at = NOW()
-                 WHERE id = ?`,
-                [data.full_name, data.birth_date, data.group_name, 
+                 WHERE id = ? AND role = 'student'`,
+                [data.full_name, data.birth_date, data.group_name,
                  data.email, data.phone, id]
             );
+            if (userUpdate.affectedRows === 0) {
+                const notFound = new Error('Студент не найден');
+                notFound.statusCode = 404;
+                throw notFound;
+            }
             
             // Обновляем профиль
             await conn.execute(
@@ -602,7 +960,7 @@ app.put('/api/students/:id', authenticateToken, requireAdmin, async (req, res) =
                 [data.family_type, data.lives_with, data.school, data.home_address, id]
             );
             
-            await logAction(req.db, req.user.id, 'UPDATE_STUDENT', 'user', parseInt(id), data);
+            await logAction(conn, req.user.id, 'UPDATE_STUDENT', 'user', parseInt(id), data);
             
             await conn.commit();
             res.json({ message: 'Данные обновлены' });
@@ -614,14 +972,20 @@ app.put('/api/students/:id', authenticateToken, requireAdmin, async (req, res) =
         }
     } catch (error) {
         console.error('Ошибка обновления студента:', error);
-        res.status(500).json({ error: 'Ошибка обновления' });
+        res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Ошибка обновления' });
     }
 });
 
 // Удаление студента (мягкое)
 app.delete('/api/students/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        await req.db.execute('UPDATE users SET is_active = FALSE WHERE id = ?', [req.params.id]);
+        const [result] = await req.db.execute(
+            "UPDATE users SET is_active = FALSE, token_version = token_version + 1 WHERE id = ? AND role = 'student'",
+            [req.params.id]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Студент не найден' });
+        }
         await logAction(req.db, req.user.id, 'DELETE_STUDENT', 'user', parseInt(req.params.id));
         res.json({ message: 'Студент деактивирован' });
     } catch (error) {
@@ -645,7 +1009,10 @@ app.post('/api/students/:id/reset-password', authenticateToken, requireAdmin, as
             return res.status(404).json({ error: 'Студент не найден' });
         }
         const hash = await bcrypt.hash(newPassword, 10);
-        await req.db.execute('UPDATE users SET password = ? WHERE id = ?', [hash, req.params.id]);
+        await req.db.execute(
+            'UPDATE users SET password = ?, token_version = token_version + 1 WHERE id = ?',
+            [hash, req.params.id]
+        );
         await logAction(req.db, req.user.id, 'RESET_STUDENT_PASSWORD', 'user', parseInt(req.params.id), { username: student.username });
         res.json({ message: 'Пароль студента изменён' });
     } catch (error) {
@@ -662,10 +1029,10 @@ app.post('/api/students/import', authenticateToken, requireAdmin, async (req, re
             return res.status(400).json({ error: 'Нет данных для импорта' });
         }
 
-        const DEFAULT_PASSWORD = 'Collegeit2026!';
         const VALID_FAMILY = ['full', 'single_parent', 'guardian', 'other'];
         let created = 0;
         const errors = [];
+        const generatedCredentials = [];
 
         for (let i = 0; i < students.length; i++) {
             const s = students[i] || {};
@@ -678,7 +1045,12 @@ app.post('/api/students/import', authenticateToken, requireAdmin, async (req, re
             }
 
             const fullName = String(s.full_name || '').trim() || username;
-            const password = String(s.password || '').trim() || DEFAULT_PASSWORD;
+            const suppliedPassword = String(s.password || '').trim();
+            const password = suppliedPassword || `${crypto.randomBytes(9).toString('base64url')}Aa1!`;
+            if (suppliedPassword && suppliedPassword.length < 8) {
+                errors.push(`Строка ${rowNum}: пароль короче 8 символов`);
+                continue;
+            }
             let familyType = String(s.family_type || 'full').trim();
             if (!VALID_FAMILY.includes(familyType)) familyType = 'full';
             const birthDate = s.birth_date ? String(s.birth_date).slice(0, 10) : null;
@@ -704,6 +1076,7 @@ app.post('/api/students/import', authenticateToken, requireAdmin, async (req, re
 
                 await conn.commit();
                 created++;
+                if (!suppliedPassword) generatedCredentials.push({ username, password });
             } catch (e) {
                 await conn.rollback();
                 if (e.code === 'ER_DUP_ENTRY') {
@@ -717,7 +1090,7 @@ app.post('/api/students/import', authenticateToken, requireAdmin, async (req, re
         }
 
         await logAction(req.db, req.user.id, 'IMPORT_STUDENTS', 'user', null, { created, errors: errors.length });
-        res.json({ created, total: students.length, errors });
+        res.json({ created, total: students.length, errors, generatedCredentials });
     } catch (error) {
         console.error('Ошибка импорта студентов:', error);
         res.status(500).json({ error: 'Ошибка импорта' });
@@ -770,7 +1143,13 @@ app.post('/api/curators', authenticateToken, requireAdmin, async (req, res) => {
 // Удаление куратора (мягкое)
 app.delete('/api/curators/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        await req.db.execute("UPDATE users SET is_active = FALSE WHERE id = ? AND role = 'curator'", [req.params.id]);
+        const [result] = await req.db.execute(
+            "UPDATE users SET is_active = FALSE, token_version = token_version + 1 WHERE id = ? AND role = 'curator'",
+            [req.params.id]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Куратор не найден' });
+        }
         await logAction(req.db, req.user.id, 'DELETE_CURATOR', 'user', parseInt(req.params.id));
         res.json({ message: 'Куратор удалён' });
     } catch (error) {
@@ -784,7 +1163,7 @@ app.delete('/api/curators/:id', authenticateToken, requireAdmin, async (req, res
 // ============================================
 
 // Получение своего профиля
-app.get('/api/profile', authenticateToken, async (req, res) => {
+app.get('/api/profile', authenticateToken, requireStudent, async (req, res) => {
     try {
         const [profiles] = await req.db.execute(`
             SELECT sp.*, u.full_name, u.birth_date, u.group_name
@@ -805,9 +1184,17 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
 });
 
 // Создание/обновление профиля студента
-app.put('/api/profile', authenticateToken, async (req, res) => {
+app.put('/api/profile', authenticateToken, requireStudent, async (req, res) => {
     try {
         const { family_type, lives_with, school, home_address } = req.body;
+        if (!['full', 'single_parent', 'guardian', 'other'].includes(family_type)) {
+            return res.status(400).json({ error: 'Некорректный тип семьи' });
+        }
+        if (String(lives_with || '').length > 5000 ||
+            String(school || '').length > 255 ||
+            String(home_address || '').length > 500) {
+            return res.status(400).json({ error: 'Одно из полей превышает допустимую длину' });
+        }
         
         // Проверяем существование профиля
         const [existing] = await req.db.execute(
@@ -862,19 +1249,51 @@ app.get('/api/questionnaires', authenticateToken, requireAdmin, async (req, res)
 // Создание опросника
 app.post('/api/questionnaires', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { title, description, questions } = req.body;
-        
-        if (!title || !questions || questions.length === 0) {
+        const { title, description, questions, methodology } = req.body;
+
+        if (!String(title || '').trim() || !Array.isArray(questions) || questions.length === 0) {
             return res.status(400).json({ error: 'Укажите название и вопросы' });
         }
-        
+        if (String(title).length > 255 || questions.length > 500) {
+            return res.status(400).json({ error: 'Слишком длинное название или слишком много вопросов' });
+        }
+        const validTypes = new Set(['single', 'multiple', 'scale', 'text']);
+        for (const [index, question] of questions.entries()) {
+            if (!question || !String(question.questionText || '').trim() || !validTypes.has(question.questionType)) {
+                return res.status(400).json({ error: `Некорректный вопрос №${index + 1}` });
+            }
+        }
+        if (methodology && (
+            typeof methodology !== 'object' ||
+            String(methodology.title || '').trim() !== String(title).trim() ||
+            !Array.isArray(methodology.questions) ||
+            methodology.questions.length !== questions.length
+        )) {
+            return res.status(400).json({ error: 'Формула методики не соответствует тесту' });
+        }
+        if (!methodology) {
+            const [namedMethodologies] = await req.db.execute(
+                'SELECT id FROM methodologies WHERE title = ? AND is_active = TRUE LIMIT 1',
+                [String(title).trim()]
+            );
+            if (findMethodologyByTitle(title) || namedMethodologies.length) {
+                return res.status(400).json({
+                    error: 'Название совпадает с методикой. Выберите её из списка, чтобы сохранить формулу.'
+                });
+            }
+        }
+        const methodologySnapshot = methodology && typeof methodology === 'object'
+            ? JSON.stringify(methodology)
+            : null;
+
         const conn = await req.db.getConnection();
         await conn.beginTransaction();
         
         try {
             const [result] = await conn.execute(
-                'INSERT INTO questionnaires (title, description, created_by) VALUES (?, ?, ?)',
-                [title, description, req.user.id]
+                `INSERT INTO questionnaires (title, description, created_by, methodology_data)
+                 VALUES (?, ?, ?, ?)`,
+                [String(title).trim(), description || null, req.user.id, methodologySnapshot]
             );
             
             const questionnaireId = result.insertId;
@@ -890,8 +1309,8 @@ app.post('/api/questionnaires', authenticateToken, requireAdmin, async (req, res
                         q.questionText,
                         q.questionType,
                         JSON.stringify(q.options || []),
-                        q.scaleMin || 1,
-                        q.scaleMax || 5,
+                        Number.isFinite(Number(q.scaleMin)) ? Number(q.scaleMin) : 1,
+                        Number.isFinite(Number(q.scaleMax)) ? Number(q.scaleMax) : 5,
                         JSON.stringify(q.scaleLabels || {}),
                         q.isRequired !== false,
                         i
@@ -899,7 +1318,7 @@ app.post('/api/questionnaires', authenticateToken, requireAdmin, async (req, res
                 );
             }
             
-            await logAction(req.db, req.user.id, 'CREATE_QUESTIONNAIRE', 'questionnaire', questionnaireId, { title });
+            await logAction(conn, req.user.id, 'CREATE_QUESTIONNAIRE', 'questionnaire', questionnaireId, { title });
             
             await conn.commit();
             res.status(201).json({ message: 'Опросник создан', id: questionnaireId });
@@ -925,6 +1344,22 @@ app.get('/api/questionnaires/:id', authenticateToken, async (req, res) => {
         
         if (questionnaires.length === 0) {
             return res.status(404).json({ error: 'Опросник не найден' });
+        }
+
+        if (req.user.role === 'student') {
+            const [[assignment]] = await req.db.execute(
+                `SELECT id FROM assignments
+                 WHERE questionnaire_id = ? AND user_id = ?
+                   AND status IN ('assigned', 'started')
+                   AND (due_date IS NULL OR due_date >= CURDATE())
+                 ORDER BY assigned_at DESC LIMIT 1`,
+                [req.params.id, req.user.id]
+            );
+            if (!assignment) {
+                return res.status(403).json({ error: 'Этот тест вам не назначен или срок истёк' });
+            }
+        } else if (req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Доступ запрещён' });
         }
         
         const [questions] = await req.db.execute(
@@ -963,8 +1398,14 @@ app.delete('/api/questionnaires/:id', authenticateToken, requireAdmin, async (re
 });
 
 // Получение доступных тестов для студента
-app.get('/api/my-tests', authenticateToken, async (req, res) => {
+app.get('/api/my-tests', authenticateToken, requireStudent, async (req, res) => {
     try {
+        await req.db.execute(
+            `UPDATE assignments SET status = 'expired'
+             WHERE user_id = ? AND status IN ('assigned', 'started')
+               AND due_date IS NOT NULL AND due_date < CURDATE()`,
+            [req.user.id]
+        );
         const [assignments] = await req.db.execute(`
             SELECT a.id as assignment_id, a.status as assignment_status, a.due_date,
                    q.id, q.title, q.description,
@@ -972,7 +1413,7 @@ app.get('/api/my-tests', authenticateToken, async (req, res) => {
                    r.status as result_status, r.completed_at
             FROM assignments a
             JOIN questionnaires q ON a.questionnaire_id = q.id
-            LEFT JOIN results r ON r.user_id = a.user_id AND r.questionnaire_id = q.id
+            LEFT JOIN results r ON r.assignment_id = a.id
             WHERE a.user_id = ? AND q.is_active = TRUE
             ORDER BY a.assigned_at DESC
         `, [req.user.id]);
@@ -986,29 +1427,79 @@ app.get('/api/my-tests', authenticateToken, async (req, res) => {
 
 // Назначение теста студентам
 app.post('/api/assign-test', authenticateToken, requireAdmin, async (req, res) => {
+    const { questionnaireId, userIds, dueDate } = req.body;
+    const qId = Number(questionnaireId);
+    const ids = Array.isArray(userIds)
+        ? [...new Set(userIds.map(Number).filter(Number.isInteger))]
+        : [];
+
+    if (!Number.isInteger(qId) || ids.length === 0) {
+        return res.status(400).json({ error: 'Укажите тест и студентов' });
+    }
+    if (ids.length > 1000) {
+        return res.status(400).json({ error: 'За один раз можно назначить не более 1000 студентов' });
+    }
+    if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(dueDate))) {
+        return res.status(400).json({ error: 'Некорректный срок выполнения' });
+    }
+
+    const conn = await req.db.getConnection();
     try {
-        const { questionnaireId, userIds, dueDate } = req.body;
-        
-        if (!questionnaireId || !userIds || userIds.length === 0) {
-            return res.status(400).json({ error: 'Укажите тест и студентов' });
+        await conn.beginTransaction();
+        const [[questionnaire]] = await conn.execute(
+            'SELECT id FROM questionnaires WHERE id = ? AND is_active = TRUE',
+            [qId]
+        );
+        if (!questionnaire) {
+            await conn.rollback();
+            return res.status(404).json({ error: 'Тест не найден' });
         }
-        
-        for (const userId of userIds) {
-            await req.db.execute(
-                `INSERT IGNORE INTO assignments (questionnaire_id, user_id, assigned_by, due_date)
-                 VALUES (?, ?, ?, ?)`,
-                [questionnaireId, userId, req.user.id, dueDate]
+
+        let assigned = 0;
+        let skipped = 0;
+        for (const userId of ids) {
+            const [[student]] = await conn.execute(
+                "SELECT id FROM users WHERE id = ? AND role = 'student' AND is_active = TRUE",
+                [userId]
             );
+            if (!student) {
+                skipped++;
+                continue;
+            }
+            const [[openAssignment]] = await conn.execute(
+                `SELECT id FROM assignments
+                 WHERE questionnaire_id = ? AND user_id = ?
+                   AND status IN ('assigned', 'started')
+                 LIMIT 1 FOR UPDATE`,
+                [qId, userId]
+            );
+            if (openAssignment) {
+                skipped++;
+                continue;
+            }
+            await conn.execute(
+                `INSERT INTO assignments (questionnaire_id, user_id, assigned_by, due_date)
+                 VALUES (?, ?, ?, ?)`,
+                [qId, userId, req.user.id, dueDate || null]
+            );
+            assigned++;
         }
-        
-        await logAction(req.db, req.user.id, 'ASSIGN_TEST', 'assignment', null, { 
-            questionnaireId, studentsCount: userIds.length 
+
+        await logAction(conn, req.user.id, 'ASSIGN_TEST', 'assignment', null, {
+            questionnaireId: qId, assigned, skipped
         });
-        
-        res.json({ message: `Тест назначен ${userIds.length} студентам` });
+        await conn.commit();
+        res.json({
+            message: `Тест назначен ${assigned} студентам`,
+            assigned,
+            skipped
+        });
     } catch (error) {
+        await conn.rollback();
         console.error('Ошибка назначения:', error);
         res.status(500).json({ error: 'Ошибка назначения' });
+    } finally {
+        conn.release();
     }
 });
 
@@ -1017,61 +1508,129 @@ app.post('/api/assign-test', authenticateToken, requireAdmin, async (req, res) =
 // ============================================
 
 // Начало прохождения теста
-app.post('/api/results/start', authenticateToken, async (req, res) => {
+app.post('/api/results/start', authenticateToken, requireStudent, async (req, res) => {
+    const assignmentId = Number(req.body && req.body.assignmentId);
+    if (!Number.isInteger(assignmentId)) {
+        return res.status(400).json({ error: 'Некорректное назначение теста' });
+    }
+
+    const conn = await req.db.getConnection();
     try {
-        const { questionnaireId } = req.body;
-        
-        // Проверяем, не проходил ли уже
-        const [existing] = await req.db.execute(
-            `SELECT id FROM results 
-             WHERE user_id = ? AND questionnaire_id = ? AND status = 'in_progress'`,
-            [req.user.id, questionnaireId]
+        await conn.beginTransaction();
+        const [[assignment]] = await conn.execute(
+            `SELECT a.id, a.questionnaire_id, a.status, a.due_date
+             FROM assignments a
+             JOIN questionnaires q ON q.id = a.questionnaire_id AND q.is_active = TRUE
+             WHERE a.id = ? AND a.user_id = ?
+             FOR UPDATE`,
+            [assignmentId, req.user.id]
         );
-        
-        if (existing.length > 0) {
-            return res.json({ resultId: existing[0].id, message: 'Продолжение теста' });
+        if (!assignment) {
+            await conn.rollback();
+            return res.status(404).json({ error: 'Назначение не найдено' });
         }
-        
-        const [result] = await req.db.execute(
-            `INSERT INTO results (user_id, questionnaire_id, answers, status)
-             VALUES (?, ?, '{}', 'in_progress')`,
-            [req.user.id, questionnaireId]
+        if (assignment.due_date && new Date(assignment.due_date) < new Date(new Date().toDateString())) {
+            await conn.execute("UPDATE assignments SET status = 'expired' WHERE id = ?", [assignmentId]);
+            await conn.commit();
+            return res.status(403).json({ error: 'Срок прохождения теста истёк' });
+        }
+        if (assignment.status === 'completed' || assignment.status === 'expired') {
+            await conn.rollback();
+            return res.status(409).json({ error: 'Это назначение уже закрыто' });
+        }
+
+        const [[existing]] = await conn.execute(
+            'SELECT id, answers, status FROM results WHERE assignment_id = ?',
+            [assignmentId]
         );
-        
-        // Обновляем статус назначения
-        await req.db.execute(
-            `UPDATE assignments SET status = 'started' 
-             WHERE user_id = ? AND questionnaire_id = ? AND status = 'assigned'`,
-            [req.user.id, questionnaireId]
+        if (existing) {
+            await conn.commit();
+            return res.json({
+                resultId: existing.id,
+                questionnaireId: assignment.questionnaire_id,
+                answers: parseJsonValue(existing.answers, {}),
+                message: 'Продолжение теста'
+            });
+        }
+
+        // Однократная привязка старого черновика, созданного до появления assignment_id.
+        const [[legacyDraft]] = await conn.execute(
+            `SELECT id, answers FROM results
+             WHERE assignment_id IS NULL AND user_id = ? AND questionnaire_id = ? AND status = 'in_progress'
+             ORDER BY started_at DESC LIMIT 1 FOR UPDATE`,
+            [req.user.id, assignment.questionnaire_id]
         );
-        
-        res.status(201).json({ resultId: result.insertId });
+        if (legacyDraft) {
+            await conn.execute(
+                'UPDATE results SET assignment_id = ? WHERE id = ?',
+                [assignmentId, legacyDraft.id]
+            );
+            await conn.execute(
+                "UPDATE assignments SET status = 'started' WHERE id = ? AND status = 'assigned'",
+                [assignmentId]
+            );
+            await conn.commit();
+            return res.json({
+                resultId: legacyDraft.id,
+                questionnaireId: assignment.questionnaire_id,
+                answers: parseJsonValue(legacyDraft.answers, {}),
+                message: 'Продолжение теста'
+            });
+        }
+
+        const [result] = await conn.execute(
+            `INSERT INTO results (user_id, questionnaire_id, assignment_id, answers, status)
+             VALUES (?, ?, ?, '{}', 'in_progress')`,
+            [req.user.id, assignment.questionnaire_id, assignmentId]
+        );
+        await conn.execute(
+            "UPDATE assignments SET status = 'started' WHERE id = ? AND status = 'assigned'",
+            [assignmentId]
+        );
+        await conn.commit();
+        res.status(201).json({
+            resultId: result.insertId,
+            questionnaireId: assignment.questionnaire_id,
+            answers: {}
+        });
     } catch (error) {
+        await conn.rollback();
         console.error('Ошибка начала теста:', error);
         res.status(500).json({ error: 'Ошибка начала теста' });
+    } finally {
+        conn.release();
     }
 });
 
 // Сохранение ответов
-app.post('/api/results/save', authenticateToken, async (req, res) => {
+app.post('/api/results/save', authenticateToken, requireStudent, async (req, res) => {
     try {
         const { resultId, answers } = req.body;
-        
-        // Проверяем принадлежность результата
-        const [results] = await req.db.execute(
-            'SELECT * FROM results WHERE id = ? AND user_id = ?',
+        if (!Number.isInteger(Number(resultId)) || !isPlainObject(answers)) {
+            return res.status(400).json({ error: 'Некорректные данные черновика' });
+        }
+
+        const [[result]] = await req.db.execute(
+            `SELECT r.id, r.status, a.due_date, a.status AS assignment_status
+             FROM results r
+             JOIN assignments a ON a.id = r.assignment_id
+             WHERE r.id = ? AND r.user_id = ?`,
             [resultId, req.user.id]
         );
-        
-        if (results.length === 0) {
+        if (!result) {
             return res.status(404).json({ error: 'Результат не найден' });
         }
-        
+        if (result.status !== 'in_progress' || result.assignment_status !== 'started') {
+            return res.status(409).json({ error: 'Завершённый результат нельзя изменить' });
+        }
+        if (result.due_date && new Date(result.due_date) < new Date(new Date().toDateString())) {
+            return res.status(403).json({ error: 'Срок прохождения теста истёк' });
+        }
+
         await req.db.execute(
-            'UPDATE results SET answers = ? WHERE id = ?',
-            [JSON.stringify(answers), resultId]
+            "UPDATE results SET answers = ? WHERE id = ? AND user_id = ? AND status = 'in_progress'",
+            [JSON.stringify(answers), resultId, req.user.id]
         );
-        
         res.json({ message: 'Ответы сохранены' });
     } catch (error) {
         console.error('Ошибка сохранения:', error);
@@ -1080,80 +1639,79 @@ app.post('/api/results/save', authenticateToken, async (req, res) => {
 });
 
 // Завершение теста
-app.post('/api/results/complete', authenticateToken, async (req, res) => {
+app.post('/api/results/complete', authenticateToken, requireStudent, async (req, res) => {
+    const { resultId, answers } = req.body || {};
+    if (!Number.isInteger(Number(resultId)) || !isPlainObject(answers)) {
+        return res.status(400).json({ error: 'Некорректные данные результата' });
+    }
+
+    const conn = await req.db.getConnection();
     try {
-        const { resultId, answers } = req.body;
-        
-        const [results] = await req.db.execute(
-            'SELECT * FROM results WHERE id = ? AND user_id = ?',
+        await conn.beginTransaction();
+        const [[result]] = await conn.execute(
+            `SELECT r.id, r.questionnaire_id, r.assignment_id, r.status,
+                    a.status AS assignment_status, a.due_date,
+                    q.title, q.methodology_data
+             FROM results r
+             JOIN assignments a ON a.id = r.assignment_id
+             JOIN questionnaires q ON q.id = r.questionnaire_id AND q.is_active = TRUE
+             WHERE r.id = ? AND r.user_id = ?
+             FOR UPDATE`,
             [resultId, req.user.id]
         );
-        
-        if (results.length === 0) {
+        if (!result) {
+            await conn.rollback();
             return res.status(404).json({ error: 'Результат не найден' });
         }
-
-        // Загружаем вопросы опросника, чтобы определить способ подсчёта
-        const [questionRows] = await req.db.execute(
-            'SELECT options, order_index FROM questions WHERE questionnaire_id = ? ORDER BY order_index',
-            [results[0].questionnaire_id]
-        );
-        const questions = questionRows.map(q => ({
-            options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options
-        }));
-
-        // Методика со взвешенными вариантами: вариант ответа = { text, score }.
-        // Тогда балл = строгая СУММА весов выбранных вариантов (по формуле методики).
-        const isWeighted = questions.some(q =>
-            Array.isArray(q.options) &&
-            q.options.some(o => o && typeof o === 'object' && typeof o.score === 'number')
-        );
-
-        let finalScore;
-        if (isWeighted) {
-            let sum = 0;
-            questions.forEach((q, idx) => {
-                const answer = answers ? answers[idx] : undefined;
-                if (Array.isArray(q.options)) {
-                    const opt = q.options.find(o =>
-                        (o && typeof o === 'object' ? o.text : o) === answer
-                    );
-                    if (opt && typeof opt.score === 'number') sum += opt.score;
-                }
-            });
-            finalScore = sum;
-        } else {
-            // Прежняя логика: среднее по числовым ответам (шкалы)
-            let totalScore = 0;
-            let answeredCount = 0;
-            Object.values(answers || {}).forEach(answer => {
-                if (typeof answer === 'number') {
-                    totalScore += answer;
-                    answeredCount++;
-                }
-            });
-            finalScore = answeredCount > 0 ? Number((totalScore / answeredCount).toFixed(2)) : 0;
+        if (result.status !== 'in_progress' || !['assigned', 'started'].includes(result.assignment_status)) {
+            await conn.rollback();
+            return res.status(409).json({ error: 'Завершённый результат нельзя изменить' });
+        }
+        if (result.due_date && new Date(result.due_date) < new Date(new Date().toDateString())) {
+            await conn.execute("UPDATE assignments SET status = 'expired' WHERE id = ?", [result.assignment_id]);
+            await conn.commit();
+            return res.status(403).json({ error: 'Срок прохождения теста истёк' });
         }
 
-        await req.db.execute(
-            `UPDATE results SET answers = ?, score = ?, status = 'completed', completed_at = NOW()
-             WHERE id = ?`,
-            [JSON.stringify(answers), finalScore, resultId]
+        const [questions] = await conn.execute(
+            `SELECT question_type, options, scale_min, scale_max, is_required, order_index
+             FROM questions WHERE questionnaire_id = ? ORDER BY order_index`,
+            [result.questionnaire_id]
         );
-        
-        // Обновляем статусы
-        await req.db.execute(
-            `UPDATE assignments SET status = 'completed' 
-             WHERE user_id = ? AND questionnaire_id = ?`,
-            [req.user.id, results[0].questionnaire_id]
-        );
-        
-        await logAction(req.db, req.user.id, 'COMPLETE_TEST', 'result', resultId, { score: finalScore });
+        const validationError = validateQuestionnaireAnswers(questions, answers);
+        if (validationError) {
+            await conn.rollback();
+            return res.status(400).json({ error: validationError });
+        }
 
+        const methodology = await resolveMethodologyForQuestionnaire(conn, result);
+        const methodologyScore = methodology ? scoreMethodology(methodology, answers) : null;
+        const finalScore = methodologyScore && Number.isFinite(methodologyScore.total)
+            ? methodologyScore.total
+            : fallbackQuestionnaireScore(questions, answers);
+
+        const [updated] = await conn.execute(
+            `UPDATE results SET answers = ?, score = ?, status = 'completed', completed_at = NOW()
+             WHERE id = ? AND user_id = ? AND status = 'in_progress'`,
+            [JSON.stringify(answers), finalScore, resultId, req.user.id]
+        );
+        if (updated.affectedRows !== 1) {
+            await conn.rollback();
+            return res.status(409).json({ error: 'Результат уже был завершён' });
+        }
+        await conn.execute(
+            "UPDATE assignments SET status = 'completed' WHERE id = ?",
+            [result.assignment_id]
+        );
+        await logAction(conn, req.user.id, 'COMPLETE_TEST', 'result', Number(resultId), { score: finalScore });
+        await conn.commit();
         res.json({ message: 'Тест завершён', score: finalScore });
     } catch (error) {
+        await conn.rollback();
         console.error('Ошибка завершения:', error);
         res.status(500).json({ error: 'Ошибка завершения' });
+    } finally {
+        conn.release();
     }
 });
 
@@ -1164,18 +1722,19 @@ app.post('/api/results/complete', authenticateToken, async (req, res) => {
 // Получение всех результатов
 app.get('/api/results', authenticateToken, requireStaff, async (req, res) => {
     try {
-        const { questionnaireId, startDate, endDate } = req.query;
+        const { questionnaireId, startDate, endDate, level, risk } = req.query;
+        const search = String(req.query.search || '').trim().slice(0, 100);
         // Куратор видит результаты только своей группы.
         const groupId = req.user.role === 'curator' ? req.user.group : req.query.groupId;
 
         let query = `
             SELECT r.id, r.score, r.status, r.completed_at, r.answers,
                    u.id as user_id, u.full_name, u.group_name,
-                   q.title as questionnaire_title
+                   q.title as questionnaire_title, q.methodology_data
             FROM results r
             JOIN users u ON r.user_id = u.id
             JOIN questionnaires q ON r.questionnaire_id = q.id
-            WHERE 1=1
+            WHERE r.status = 'completed'
         `;
         const params = [];
 
@@ -1190,6 +1749,10 @@ app.get('/api/results', authenticateToken, requireStaff, async (req, res) => {
             query += ' AND r.questionnaire_id = ?';
             params.push(parseInt(questionnaireId));
         }
+        if (search) {
+            query += ' AND LOWER(u.full_name) LIKE ?';
+            params.push(`%${search.toLowerCase()}%`);
+        }
         if (startDate) {
             query += ' AND r.completed_at >= ?';
             params.push(startDate);
@@ -1203,12 +1766,19 @@ app.get('/api/results', authenticateToken, requireStaff, async (req, res) => {
         
         const [results] = await req.db.execute(query, params);
         
-        // Парсим JSON ответы
-        const parsedResults = results.map(r => ({
-            ...r,
-            answers: typeof r.answers === 'string' ? JSON.parse(r.answers) : r.answers
-        }));
-        
+        let parsedResults = results.map(deriveResultMetadata);
+        if (level) {
+            parsedResults = parsedResults.filter(result =>
+                level === 'none'
+                    ? !result.interpretation_level
+                    : result.interpretation_level === level
+            );
+        }
+        if (risk === 'true' || risk === 'false') {
+            const expected = risk === 'true';
+            parsedResults = parsedResults.filter(result => result.at_risk === expected);
+        }
+
         res.json(parsedResults);
     } catch (error) {
         console.error('Ошибка результатов:', error);
@@ -1334,6 +1904,13 @@ app.post('/api/methodologies', authenticateToken, requireAdmin, async (req, res)
         if (!data.title || !Array.isArray(data.questions) || data.questions.length === 0) {
             return res.status(400).json({ error: 'Укажите название и хотя бы один вопрос' });
         }
+        const [sameTitle] = await req.db.execute(
+            'SELECT id FROM methodologies WHERE title = ? LIMIT 1',
+            [String(data.title).trim()]
+        );
+        if (findMethodologyByTitle(data.title) || sameTitle.length) {
+            return res.status(400).json({ error: 'Методика с таким названием уже существует' });
+        }
         const methKey = data.id || ('m-' + Date.now());
         data.id = methKey;
         const [result] = await req.db.execute(
@@ -1356,10 +1933,21 @@ app.put('/api/methodologies/:id', authenticateToken, requireAdmin, async (req, r
         if (!data.title || !Array.isArray(data.questions) || data.questions.length === 0) {
             return res.status(400).json({ error: 'Укажите название и хотя бы один вопрос' });
         }
-        await req.db.execute(
+        const [sameTitle] = await req.db.execute(
+            'SELECT id FROM methodologies WHERE title = ? AND id <> ? LIMIT 1',
+            [String(data.title).trim(), req.params.id]
+        );
+        const builtin = findMethodologyByTitle(data.title);
+        if (sameTitle.length || builtin) {
+            return res.status(400).json({ error: 'Методика с таким названием уже существует' });
+        }
+        const [result] = await req.db.execute(
             'UPDATE methodologies SET title = ?, data = ?, updated_at = NOW() WHERE id = ?',
             [data.title, JSON.stringify(data), req.params.id]
         );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Методика не найдена' });
+        }
         await logAction(req.db, req.user.id, 'UPDATE_METHODOLOGY', 'methodology', parseInt(req.params.id), { title: data.title });
         res.json({ message: 'Методика обновлена' });
     } catch (error) {
@@ -1371,7 +1959,10 @@ app.put('/api/methodologies/:id', authenticateToken, requireAdmin, async (req, r
 // Удаление методики (админ)
 app.delete('/api/methodologies/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        await req.db.execute('DELETE FROM methodologies WHERE id = ?', [req.params.id]);
+        const [result] = await req.db.execute('DELETE FROM methodologies WHERE id = ?', [req.params.id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Методика не найдена' });
+        }
         await logAction(req.db, req.user.id, 'DELETE_METHODOLOGY', 'methodology', parseInt(req.params.id));
         res.json({ message: 'Методика удалена' });
     } catch (error) {
@@ -1403,7 +1994,10 @@ app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
                 return res.status(401).json({ error: 'Текущий пароль неверный' });
             }
             const hash = await bcrypt.hash(newPassword, 10);
-            await controlPool.execute('UPDATE platform_admins SET password = ? WHERE id = ?', [hash, req.user.id]);
+            await controlPool.execute(
+                'UPDATE platform_admins SET password = ?, token_version = token_version + 1 WHERE id = ?',
+                [hash, req.user.id]
+            );
             return res.json({ message: 'Пароль изменён' });
         }
 
@@ -1412,7 +2006,10 @@ app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
             return res.status(401).json({ error: 'Текущий пароль неверный' });
         }
         const hash = await bcrypt.hash(newPassword, 10);
-        await req.db.execute('UPDATE users SET password = ? WHERE id = ?', [hash, req.user.id]);
+        await req.db.execute(
+            'UPDATE users SET password = ?, token_version = token_version + 1 WHERE id = ?',
+            [hash, req.user.id]
+        );
         await logAction(req.db, req.user.id, 'CHANGE_PASSWORD', 'user', req.user.id);
         res.json({ message: 'Пароль изменён' });
     } catch (error) {
@@ -1501,8 +2098,26 @@ app.post('/api/platform/tenants', authenticateToken, requireSuperAdmin, async (r
 app.patch('/api/platform/tenants/:id', authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
         const { is_active } = req.body || {};
-        await controlPool.execute('UPDATE tenants SET is_active = ? WHERE id = ? AND code <> ?',
-            [is_active ? 1 : 0, req.params.id, 'default']);
+        if (typeof is_active !== 'boolean') {
+            return res.status(400).json({ error: 'is_active должен быть логическим значением' });
+        }
+        if (is_active) {
+            const [[tenant]] = await controlPool.execute(
+                'SELECT db_name FROM tenants WHERE id = ? AND code <> ?',
+                [req.params.id, 'default']
+            );
+            if (!tenant) {
+                return res.status(404).json({ error: 'Колледж не найден или защищён от изменения' });
+            }
+            await ensureTenantSchema(tenantPool(tenant.db_name));
+        }
+        const [result] = await controlPool.execute(
+            'UPDATE tenants SET is_active = ? WHERE id = ? AND code <> ?',
+            [is_active ? 1 : 0, req.params.id, 'default']
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Колледж не найден или защищён от отключения' });
+        }
         res.json({ message: 'Колледж обновлён' });
     } catch (error) {
         console.error('Ошибка обновления колледжа:', error);
@@ -1552,7 +2167,10 @@ app.post('/api/platform/reset-password', authenticateToken, requireSuperAdmin, a
         if (!targetUser) return res.status(404).json({ error: 'Пользователь не найден' });
 
         const hash = await bcrypt.hash(newPassword, 10);
-        await db.execute('UPDATE users SET password = ? WHERE id = ?', [hash, userId]);
+        await db.execute(
+            'UPDATE users SET password = ?, token_version = token_version + 1 WHERE id = ?',
+            [hash, userId]
+        );
         // Аудит в БД колледжа (актор не из users этого колледжа -> user_id = null, контекст в details).
         await logAction(db, null, 'SUPPORT_RESET_PASSWORD', 'user', parseInt(userId), {
             bySuperAdmin: req.user.id, superAdminName: req.user.fullName, username: targetUser.username
@@ -1588,15 +2206,49 @@ app.get('/curator', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'curator.html'));
 });
 
-// Запуск сервера
-app.listen(PORT, () => {
-    console.log(`
+app.use((error, req, res, next) => {
+    if (res.headersSent) return next(error);
+    if (error && error.type === 'entity.too.large') {
+        return res.status(413).json({ error: 'Запрос превышает допустимый размер' });
+    }
+    if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
+        return res.status(400).json({ error: 'Некорректный JSON' });
+    }
+    console.error('Необработанная ошибка запроса:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+});
+
+// Запуск сервера только после успешной инициализации всех БД и схем.
+async function startServer() {
+    try {
+        await initializeApplication();
+        return app.listen(PORT, () => {
+            console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
 ║       Система психологической диагностики студентов       ║
 ║                                                           ║
 ║   Сервер запущен: http://localhost:${PORT}                ║
-║                                                           ║                          
+║                                                           ║
 ╚═══════════════════════════════════════════════════════════╝
     `);
-});
+        });
+    } catch (error) {
+        console.error(' Критическая ошибка запуска:', error.message);
+        process.exitCode = 1;
+        return null;
+    }
+}
+
+if (require.main === module) {
+    startServer();
+}
+
+module.exports = {
+    app,
+    startServer,
+    initializeApplication,
+    validateQuestionnaireAnswers,
+    fallbackQuestionnaireScore,
+    deriveResultMetadata
+};

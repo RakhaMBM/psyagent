@@ -142,12 +142,32 @@
         });
 
         // Проверяем авторизацию при загрузке
-        window.addEventListener('load', () => {
+        window.addEventListener('load', async () => {
             const token = localStorage.getItem('token');
             const user = localStorage.getItem('user');
-            
+
             if (token && user) {
-                redirectByRole(JSON.parse(user).role);
+                try {
+                    const response = await fetch('/api/auth/me', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!response.ok) throw new Error('expired');
+                    const actual = await response.json();
+                    const cached = JSON.parse(user);
+                    const refreshed = {
+                        ...cached,
+                        id: actual.id,
+                        username: actual.username,
+                        fullName: actual.full_name,
+                        role: actual.role,
+                        groupName: actual.group_name
+                    };
+                    localStorage.setItem('user', JSON.stringify(refreshed));
+                    redirectByRole(actual.role);
+                } catch (_) {
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user');
+                }
             }
         });
 

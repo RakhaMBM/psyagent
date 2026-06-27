@@ -338,6 +338,12 @@
             <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
                 <h4><i class="bi bi-graph-up me-2"></i><span data-i18n="results.title">Результаты диагностики</span></h4>
                 <div class="d-flex gap-2">
+                    <button class="btn btn-outline-primary" onclick="openSummaryReport('group')">
+                        <i class="bi bi-people me-1"></i><span data-i18n="results.group_report">Отчёт по группе</span>
+                    </button>
+                    <button class="btn btn-outline-primary" onclick="openSummaryReport('college')">
+                        <i class="bi bi-building me-1"></i><span data-i18n="results.college_report">Отчёт по колледжу</span>
+                    </button>
                     <button class="btn btn-outline-success" onclick="exportResults()">
                         <i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="results.export">Скачать Excel</span>
                     </button>
@@ -364,8 +370,32 @@
                         <div class="col-md-2">
                             <input type="date" class="form-control" id="dateTo">
                         </div>
-                        <div class="col-md-2">
-                            <button class="btn btn-outline-secondary w-100" onclick="loadResults()" data-i18n="common.apply">Применить</button>
+                        <div class="col-md-4">
+                            <input type="search" class="form-control" id="resultSearch" data-i18n-ph="results.search" placeholder="Поиск по ФИО...">
+                        </div>
+                        <div class="col-md-3">
+                            <select class="form-select" id="resultLevel">
+                                <option value="" data-i18n="results.all_levels">Все уровни</option>
+                                <option value="low" data-i18n="level.low">Низкий</option>
+                                <option value="medium" data-i18n="level.medium">Средний</option>
+                                <option value="high" data-i18n="level.high">Высокий</option>
+                                <option value="none" data-i18n="level.none">Без интерпретации</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <select class="form-select" id="resultRisk">
+                                <option value="" data-i18n="results.risk_all">Любой признак риска</option>
+                                <option value="true" data-i18n="results.risk_only">Только группа риска</option>
+                                <option value="false" data-i18n="results.no_risk">Без признака риска</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2 d-flex gap-2">
+                            <button class="btn btn-outline-secondary flex-grow-1" onclick="loadResults()" title="Применить">
+                                <i class="bi bi-funnel"></i>
+                            </button>
+                            <button class="btn btn-outline-secondary" onclick="resetResultFilters()" title="Сбросить">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -592,6 +622,25 @@
         </div>
     </div>
 
+    <!-- Модальное окно: Сводный отчёт -->
+    <div class="modal fade" id="summaryReportModal" tabindex="-1">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="summaryReportTitle" data-i18n="report.summary_title">Сводный отчёт</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="summaryReportBody"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Закрыть</button>
+                    <button type="button" class="btn btn-primary" onclick="printOpenSummaryReport()">
+                        <i class="bi bi-printer me-1"></i><span data-i18n="report.print_summary">Печать отчёта</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Модальное окно: Назначение теста -->
     <div class="modal fade" id="assignModal" tabindex="-1">
         <div class="modal-dialog">
@@ -717,9 +766,26 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="methodologies.js"></script>
     <script src="i18n.js"></script>
+    <script src="common.js"></script>
     <script>
         let token = localStorage.getItem('token');
         let currentUser = JSON.parse(localStorage.getItem('user'));
+        const esc = window.escapeHtml;
+        let adminStudentsCache = [];
+        let adminTestsCache = [];
+
+        function methodologyForResult(result) {
+            if (result && result.methodology_data) {
+                try {
+                    return typeof result.methodology_data === 'string'
+                        ? JSON.parse(result.methodology_data)
+                        : result.methodology_data;
+                } catch (_) {}
+            }
+            return window.findMethodologyByTitle
+                ? window.findMethodologyByTitle(result && result.questionnaire_title)
+                : null;
+        }
 
         if (!token || currentUser?.role !== 'admin') {
             window.location.href = '/';
@@ -764,7 +830,7 @@
             try {
                 const groups = await (await fetch('/api/groups', { headers: { 'Authorization': `Bearer ${token}` } })).json();
                 const dl = document.getElementById('curatorGroups');
-                if (dl && Array.isArray(groups)) dl.innerHTML = groups.map(g => `<option value="${g.group_name}">`).join('');
+                if (dl && Array.isArray(groups)) dl.innerHTML = groups.map(g => `<option value="${esc(g.group_name)}">`).join('');
             } catch (e) {}
 
             const tbody = document.getElementById('curatorsBody');
@@ -778,9 +844,9 @@
                 }
                 tbody.innerHTML = list.map(c => `
                     <tr>
-                        <td class="fw-semibold">${c.full_name}</td>
-                        <td><code>${c.username}</code></td>
-                        <td>${c.group_name || '-'}</td>
+                        <td class="fw-semibold">${esc(c.full_name)}</td>
+                        <td><code>${esc(c.username)}</code></td>
+                        <td>${esc(c.group_name || '-')}</td>
                         <td>
                             <button class="btn btn-sm btn-outline-danger" onclick="deleteCurator(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
                         </td>
@@ -852,8 +918,8 @@
                         <div class="card h-100">
                             <div class="card-body">
                                 <span class="badge bg-secondary mb-2">${t('meth.builtin')}</span>
-                                <h6 class="card-title">${m.title}</h6>
-                                <p class="card-text text-muted small">${m.description || ''}</p>
+                                <h6 class="card-title">${esc(m.title)}</h6>
+                                <p class="card-text text-muted small">${esc(m.description || '')}</p>
                                 <small class="text-muted">${(m.questions || []).length} ${t('tests.q_count')}</small>
                             </div>
                         </div>
@@ -866,8 +932,8 @@
                         <div class="card h-100 border-primary">
                             <div class="card-body">
                                 <span class="badge bg-primary mb-2">${t('meth.custom')}</span>
-                                <h6 class="card-title">${m.title}</h6>
-                                <p class="card-text text-muted small">${m.description || ''}</p>
+                                <h6 class="card-title">${esc(m.title)}</h6>
+                                <p class="card-text text-muted small">${esc(m.description || '')}</p>
                                 <small class="text-muted">${(m.questions || []).length} ${t('tests.q_count')}</small>
                             </div>
                             <div class="card-footer bg-transparent border-top-0 d-flex gap-2">
@@ -890,8 +956,8 @@
         function meAddOption(text = '', score = '') {
             document.getElementById('meAnswerOptions').insertAdjacentHTML('beforeend', `
                 <div class="row g-2 mb-2 me-option-row align-items-center">
-                    <div class="col"><input class="form-control form-control-sm me-opt-text" placeholder="${t('meth.opt_text')}" value="${String(text).replace(/"/g, '&quot;')}"></div>
-                    <div class="col-auto" style="width:130px"><input type="number" class="form-control form-control-sm me-opt-score" placeholder="${t('meth.opt_score')}" value="${score}"></div>
+                    <div class="col"><input class="form-control form-control-sm me-opt-text" placeholder="${t('meth.opt_text')}" value="${esc(text)}"></div>
+                    <div class="col-auto" style="width:130px"><input type="number" class="form-control form-control-sm me-opt-score" placeholder="${t('meth.opt_score')}" value="${esc(score)}"></div>
                     <div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.me-option-row').remove()">×</button></div>
                 </div>`);
         }
@@ -901,8 +967,8 @@
                 <div class="card mb-2 me-scale-card">
                     <div class="card-body p-2">
                         <div class="row g-2 mb-2 align-items-center">
-                            <div class="col"><input class="form-control form-control-sm me-scale-name" placeholder="${t('meth.scale_name')}" oninput="meRefreshScaleSelects()" value="${String(name).replace(/"/g, '&quot;')}"></div>
-                            <div class="col-auto" style="width:130px"><input type="number" class="form-control form-control-sm me-scale-max" placeholder="${t('meth.scale_max')}" value="${maxScore}"></div>
+                            <div class="col"><input class="form-control form-control-sm me-scale-name" placeholder="${t('meth.scale_name')}" oninput="meRefreshScaleSelects()" value="${esc(name)}"></div>
+                            <div class="col-auto" style="width:130px"><input type="number" class="form-control form-control-sm me-scale-max" placeholder="${t('meth.scale_max')}" value="${esc(maxScore)}"></div>
                             <div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger" onclick="meRemoveScale(this)">×</button></div>
                         </div>
                         <div class="ms-2">
@@ -927,9 +993,9 @@
                 `<option value="${l}" ${range.level === l ? 'selected' : ''}>${l ? t('level.' + l) : '—'}</option>`).join('');
             btn.closest('.me-scale-card').querySelector('.me-ranges').insertAdjacentHTML('beforeend', `
                 <div class="row g-2 mb-1 me-range-row align-items-center">
-                    <div class="col-auto" style="width:90px"><input type="number" class="form-control form-control-sm me-range-min" placeholder="${t('meth.range_min')}" value="${range.min != null ? range.min : ''}"></div>
-                    <div class="col-auto" style="width:90px"><input type="number" class="form-control form-control-sm me-range-max" placeholder="${t('meth.range_max')}" value="${range.max != null ? range.max : ''}"></div>
-                    <div class="col"><input class="form-control form-control-sm me-range-label" placeholder="${t('meth.range_label')}" value="${(range.label || '').replace(/"/g, '&quot;')}"></div>
+                    <div class="col-auto" style="width:90px"><input type="number" class="form-control form-control-sm me-range-min" placeholder="${t('meth.range_min')}" value="${esc(range.min != null ? range.min : '')}"></div>
+                    <div class="col-auto" style="width:90px"><input type="number" class="form-control form-control-sm me-range-max" placeholder="${t('meth.range_max')}" value="${esc(range.max != null ? range.max : '')}"></div>
+                    <div class="col"><input class="form-control form-control-sm me-range-label" placeholder="${t('meth.range_label')}" value="${esc(range.label || '')}"></div>
                     <div class="col-auto"><select class="form-select form-select-sm me-range-level" style="width:auto">${levelOpts}</select></div>
                     <div class="col-auto"><div class="form-check" title="${t('meth.range_attention_hint')}"><input class="form-check-input me-range-attention" type="checkbox" ${range.attention ? 'checked' : ''}><label class="form-check-label small text-danger">${t('meth.range_attention')}</label></div></div>
                     <div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.me-range-row').remove()">×</button></div>
@@ -941,8 +1007,8 @@
             document.getElementById('meQuestions').insertAdjacentHTML('beforeend', `
                 <div class="row g-2 mb-2 me-question-row align-items-center">
                     <div class="col-auto pt-1 text-muted small me-qnum" style="width:28px">${n}</div>
-                    <div class="col"><input class="form-control form-control-sm me-q-text" placeholder="${t('meth.q_text')}" value="${String(text).replace(/"/g, '&quot;')}"></div>
-                    <div class="col-auto"><select class="form-select form-select-sm me-scale-select me-q-scale" style="width:auto" data-selected="${scaleId}"></select></div>
+                    <div class="col"><input class="form-control form-control-sm me-q-text" placeholder="${t('meth.q_text')}" value="${esc(text)}"></div>
+                    <div class="col-auto"><select class="form-select form-select-sm me-scale-select me-q-scale" style="width:auto" data-selected="${esc(scaleId)}"></select></div>
                     <div class="col-auto"><div class="form-check" title="${t('meth.q_reverse')}"><input class="form-check-input me-q-reverse" type="checkbox" ${reverse ? 'checked' : ''}><label class="form-check-label small">${t('meth.reverse_short')}</label></div></div>
                     <div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.me-question-row').remove(); meRenumberQuestions()">×</button></div>
                 </div>`);
@@ -956,9 +1022,9 @@
         function meAddValidity(name = '', threshold = '', warning = '') {
             document.getElementById('meValidity').insertAdjacentHTML('beforeend', `
                 <div class="row g-2 mb-2 me-validity-row align-items-center">
-                    <div class="col"><input class="form-control form-control-sm me-v-name" placeholder="${t('meth.v_name')}" oninput="meRefreshScaleSelects()" value="${String(name).replace(/"/g, '&quot;')}"></div>
-                    <div class="col-auto" style="width:120px"><input type="number" class="form-control form-control-sm me-v-threshold" placeholder="${t('meth.v_threshold')}" value="${threshold}"></div>
-                    <div class="col"><input class="form-control form-control-sm me-v-warning" placeholder="${t('meth.v_warning')}" value="${String(warning).replace(/"/g, '&quot;')}"></div>
+                    <div class="col"><input class="form-control form-control-sm me-v-name" placeholder="${t('meth.v_name')}" oninput="meRefreshScaleSelects()" value="${esc(name)}"></div>
+                    <div class="col-auto" style="width:120px"><input type="number" class="form-control form-control-sm me-v-threshold" placeholder="${t('meth.v_threshold')}" value="${esc(threshold)}"></div>
+                    <div class="col"><input class="form-control form-control-sm me-v-warning" placeholder="${t('meth.v_warning')}" value="${esc(warning)}"></div>
                     <div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.me-validity-row').remove(); meRefreshScaleSelects()">×</button></div>
                 </div>`);
             meRefreshScaleSelects();
@@ -982,7 +1048,7 @@
             document.querySelectorAll('.me-scale-select').forEach(sel => {
                 const cur = sel.value || sel.getAttribute('data-selected') || '';
                 sel.innerHTML = opts.length
-                    ? opts.map(o => `<option value="${o.id}">${o.name}</option>`).join('')
+                    ? opts.map(o => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('')
                     : '<option value="s0">—</option>';
                 if (opts.some(o => o.id === cur)) sel.value = cur;
             });
@@ -1150,7 +1216,7 @@
                 } else {
                     tbody.innerHTML = groups.map(g => `
                         <tr>
-                            <td>${g.group_name || '-'}</td>
+                            <td>${esc(g.group_name || '-')}</td>
                             <td>${g.total_students}</td>
                             <td><span class="badge bg-success">${g.completed_tests || 0}</span></td>
                         </tr>
@@ -1169,7 +1235,7 @@
 
             const atRisk = [];
             (results || []).forEach(r => {
-                const m = window.findMethodologyByTitle ? window.findMethodologyByTitle(r.questionnaire_title) : null;
+                const m = methodologyForResult(r);
                 if (!m || !window.resultAttention) return;
                 const a = window.resultAttention(m, r.answers || {});
                 if (a.atRisk) atRisk.push({ r, reasons: a.reasons });
@@ -1183,10 +1249,10 @@
             }
             tbody.innerHTML = atRisk.map(({ r, reasons }) => `
                 <tr>
-                    <td class="fw-semibold">${r.full_name}</td>
-                    <td>${r.group_name || '-'}</td>
-                    <td>${r.questionnaire_title}</td>
-                    <td><span class="badge bg-danger">${reasons.map(x => x.label).join('; ')}</span></td>
+                    <td class="fw-semibold">${esc(r.full_name)}</td>
+                    <td>${esc(r.group_name || '-')}</td>
+                    <td>${esc(r.questionnaire_title)}</td>
+                    <td><span class="badge bg-danger">${esc(reasons.map(x => x.label).join('; '))}</span></td>
                     <td>${formatDateTime(r.completed_at)}</td>
                     <td>
                         <div class="btn-group btn-group-sm">
@@ -1235,6 +1301,7 @@
                 });
                 const studentsRaw = await res.json();
                 const students = Array.isArray(studentsRaw) ? studentsRaw : (studentsRaw?.data || []);
+                adminStudentsCache = students;
 
                 const tbody = document.getElementById('studentsTableBody');
                 if (students.length === 0) {
@@ -1244,11 +1311,11 @@
 
                 tbody.innerHTML = students.map(s => `
                     <tr>
-                        <td class="fw-semibold">${s.full_name}</td>
+                        <td class="fw-semibold">${esc(s.full_name)}</td>
                         <td>${formatDate(s.birth_date)}</td>
                         <td>${s.age != null ? s.age + ' ' + t('unit.years') : '-'}</td>
-                        <td>${s.group_name || '-'}</td>
-                        <td>${s.school || '-'}</td>
+                        <td>${esc(s.group_name || '-')}</td>
+                        <td>${esc(s.school || '-')}</td>
                         <td>
                             <div class="btn-group btn-group-sm">
                                 <button class="btn btn-outline-secondary" onclick="printStudentReport(${s.id})" title="${t('report.print')}">
@@ -1257,7 +1324,7 @@
                                 <button class="btn btn-outline-primary" onclick="editStudent(${s.id})" title="${t('common.edit')}">
                                     <i class="bi bi-pencil"></i>
                                 </button>
-                                <button class="btn btn-outline-warning" onclick="openResetStudentPassword(${s.id}, '${(s.full_name || '').replace(/'/g, "\\'")}')" title="${t('pw.reset_student')}">
+                                <button class="btn btn-outline-warning" onclick="openResetStudentPassword(${s.id})" title="${t('pw.reset_student')}">
                                     <i class="bi bi-key"></i>
                                 </button>
                                 <button class="btn btn-outline-danger" onclick="deleteStudent(${s.id})" title="${t('common.delete')}">
@@ -1357,13 +1424,17 @@
             if (!confirm(t('msg.confirm_delete_student'))) return;
 
             try {
-                await fetch(`/api/students/${id}`, {
+                const res = await fetch(`/api/students/${id}`, {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.error || t('msg.delete_error'));
+                }
                 loadStudents();
                 loadDashboardStats();
-            } catch (e) { alert(t('msg.delete_error')); }
+            } catch (e) { alert(t('msg.delete_error') + ': ' + e.message); }
         }
 
         // ========== ИМПОРТ СТУДЕНТОВ ИЗ EXCEL ==========
@@ -1465,6 +1536,22 @@
                     msg += `\n\n${t('msg.import_skipped')} (${result.errors.length}):\n` + result.errors.slice(0, 15).join('\n');
                     if (result.errors.length > 15) msg += `\n... ${t('msg.import_more')} ${result.errors.length - 15}`;
                 }
+                if (Array.isArray(result.generatedCredentials) && result.generatedCredentials.length) {
+                    const credentialsSheet = XLSX.utils.json_to_sheet(
+                        result.generatedCredentials.map(item => ({
+                            'Логин': item.username,
+                            'Временный пароль': item.password
+                        }))
+                    );
+                    credentialsSheet['!cols'] = [{ wch: 24 }, { wch: 28 }];
+                    const credentialsBook = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(credentialsBook, credentialsSheet, 'Пароли');
+                    XLSX.writeFile(
+                        credentialsBook,
+                        `initial-passwords-${new Date().toISOString().split('T')[0]}.xlsx`
+                    );
+                    msg += `\n\n${t('msg.generated_passwords')}: ${result.generatedCredentials.length}`;
+                }
                 alert(msg);
 
                 loadStudents();
@@ -1495,6 +1582,7 @@
                 });
                 const testsRaw = await res.json();
                 const tests = Array.isArray(testsRaw) ? testsRaw : (testsRaw?.data || []);
+                adminTestsCache = tests;
 
                 const container = document.getElementById('testsList');
                 if (tests.length === 0) {
@@ -1506,8 +1594,8 @@
                     <div class="col-md-6 col-lg-4">
                         <div class="card h-100 test-card">
                             <div class="card-body">
-                                <h5 class="card-title">${item.title}</h5>
-                                <p class="card-text text-muted small">${item.description || ''}</p>
+                                <h5 class="card-title">${esc(item.title)}</h5>
+                                <p class="card-text text-muted small">${esc(item.description || '')}</p>
                                 <div class="d-flex justify-content-between align-items-center mt-3">
                                     <span class="badge bg-primary">${item.questions_count} ${t('tests.q_count')}</span>
                                     <small class="text-muted">${formatDate(item.created_at)}</small>
@@ -1515,13 +1603,13 @@
                             </div>
                             <div class="card-footer bg-transparent border-top-0">
                                 <div class="d-grid gap-2">
-                                    <button class="btn btn-sm btn-outline-success" onclick="openAssignModal(${item.id}, '${(item.title || '').replace(/'/g, "\\'")}')">
+                                    <button class="btn btn-sm btn-outline-success" onclick="openAssignModal(${item.id})">
                                         <i class="bi bi-person-plus me-1"></i>${t('tests.assign')}
                                     </button>
                                     <button class="btn btn-sm btn-outline-primary" onclick="viewTest(${item.id})">
                                         <i class="bi bi-eye me-1"></i>${t('tests.view')}
                                     </button>
-                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteTest(${item.id}, '${(item.title || '').replace(/'/g, "\\'")}')">
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteTest(${item.id})">
                                         <i class="bi bi-trash me-1"></i>${t('common.delete')}
                                     </button>
                                 </div>
@@ -1539,18 +1627,20 @@
                 const questions = Array.isArray(q.questions) ? q.questions : [];
                 const body = document.getElementById('resultModalBody');
                 body.innerHTML = `
-                    <h5>${q.title}</h5>
-                    <p class="text-muted">${q.description || ''}</p>
+                    <h5>${esc(q.title)}</h5>
+                    <p class="text-muted">${esc(q.description || '')}</p>
                     <hr>
                     <ol class="ps-3">
-                        ${questions.map(qq => `<li class="mb-2">${qq.question_text} <span class="badge bg-light text-dark">${qq.question_type}</span></li>`).join('')}
+                        ${questions.map(qq => `<li class="mb-2">${esc(qq.question_text)} <span class="badge bg-light text-dark">${esc(qq.question_type)}</span></li>`).join('')}
                     </ol>
                 `;
                 new bootstrap.Modal(document.getElementById('resultModal')).show();
             } catch (e) { alert(t('msg.test_load_error')); }
         }
 
-        async function deleteTest(id, title) {
+        async function deleteTest(id) {
+            const selected = adminTestsCache.find(item => item.id === id);
+            const title = selected ? selected.title : '';
             if (!confirm(`${t('msg.confirm_delete_test')}${title ? '\n\n«' + title + '»' : ''}`)) return;
             try {
                 const res = await fetch(`/api/questionnaires/${id}`, {
@@ -1575,7 +1665,7 @@
             if (!select) return;
             const all = window.allMethodologies ? window.allMethodologies() : (window.PSY_METHODOLOGIES || []);
             select.innerHTML = `<option value="">${t('tmodal.custom_test')}</option>` +
-                all.map(m => `<option value="${m.id}">${m.title}</option>`).join('');
+                all.map(m => `<option value="${esc(m.id)}">${esc(m.title)}</option>`).join('');
         }
 
         function onMethodologyChange() {
@@ -1596,16 +1686,21 @@
                 // блокируют отправку формы (валидация не может сфокусировать скрытое поле)
                 document.getElementById('questionsContainer').innerHTML = '';
                 preview.classList.remove('d-none');
+                const maxScoreLabel = m.maxScore != null
+                    ? m.maxScore
+                    : (Array.isArray(m.scales)
+                        ? m.scales.map(scale => scale.maxScore).filter(value => value != null).join(' / ')
+                        : '—');
                 preview.innerHTML = `
                     <div class="alert alert-light border">
-                        <strong>${t('tmodal.instruction')}:</strong> ${m.instruction || ''}
+                        <strong>${t('tmodal.instruction')}:</strong> ${esc(m.instruction || '')}
                     </div>
                     <p class="text-muted small mb-2">
-                        ${t('tmodal.answer_options')}: ${m.answerOptions.map(o => `${o.text} = ${o.score}`).join(', ')}
+                        ${t('tmodal.answer_options')}: ${(m.answerOptions || []).map(o => `${esc(o.text)} = ${Number(o.score)}`).join(', ')}
                         &middot; ${t('tests.q_count')}: ${m.questions.length}
-                        &middot; ${t('tmodal.max_score')}: ${m.maxScore}
+                        &middot; ${t('tmodal.max_score')}: ${esc(maxScoreLabel)}
                     </p>
-                    <ol class="ps-3">${m.questions.map(q => `<li class="mb-1">${q}</li>`).join('')}</ol>
+                    <ol class="ps-3">${m.questions.map(q => `<li class="mb-1">${esc(q && typeof q === 'object' ? q.text : q)}</li>`).join('')}</ol>
                 `;
             } else {
                 form.title.readOnly = false;
@@ -1786,7 +1881,12 @@
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ title, description, questions })
+                    body: JSON.stringify({
+                        title,
+                        description,
+                        questions,
+                        methodology: currentMethodology || null
+                    })
                 });
 
                 if (!res.ok) throw new Error(await res.text());
@@ -1800,7 +1900,7 @@
             }
         });
 
-        async function openAssignModal(testId, testName) {
+        async function openAssignModal(testId) {
             document.getElementById('assignQuestionnaireId').value = testId;
 
             const res = await fetch('/api/students', { headers: { 'Authorization': `Bearer ${token}` }});
@@ -1835,7 +1935,7 @@
                             <input class="form-check-input assign-group-toggle" type="checkbox"
                                    id="assignGroup${gi}" data-group="${gi}" onchange="toggleGroupAssign(this)">
                             <label class="form-check-label fw-semibold text-primary" for="assignGroup${gi}">
-                                <i class="bi bi-people me-1"></i>${g} (${groups[g].length})
+                                <i class="bi bi-people me-1"></i>${esc(g)} (${groups[g].length})
                             </label>
                         </div>
                         <div class="ms-4">
@@ -1844,7 +1944,7 @@
                                     <input class="form-check-input assign-student" type="checkbox" value="${s.id}"
                                            id="student-${s.id}" name="userIds" data-group="${gi}" onchange="syncGroupToggle(${gi})">
                                     <label class="form-check-label" for="student-${s.id}">
-                                        ${s.full_name}${s.age != null ? ' (' + s.age + ' ' + t('unit.years') + ')' : ''}
+                                        ${esc(s.full_name)}${s.age != null ? ' (' + s.age + ' ' + t('unit.years') + ')' : ''}
                                     </label>
                                 </div>
                             `).join('')}
@@ -1903,7 +2003,9 @@
                 if (!res.ok) throw new Error(await res.text());
 
                 bootstrap.Modal.getInstance(document.getElementById('assignModal')).hide();
-                alert(t('msg.test_assigned') + ': ' + userIds.length);
+                const data = await res.json();
+                alert(t('msg.test_assigned') + ': ' + (data.assigned ?? userIds.length) +
+                    (data.skipped ? `; ${t('msg.skipped')}: ${data.skipped}` : ''));
             } catch (e) {
                 alert(t('msg.error') + ': ' + e.message);
             }
@@ -1918,27 +2020,45 @@
                 const select = document.getElementById('resultTest');
                 if (select) {
                     select.innerHTML = `<option value="">${t('common.all_tests')}</option>` +
-                        tests.map(item => `<option value="${item.id}">${item.title}</option>`).join('');
+                        tests.map(item => `<option value="${item.id}">${esc(item.title)}</option>`).join('');
                 }
             } catch (e) {}
         }
 
+        function resultQueryParams(includeGroup = true) {
+            const params = new URLSearchParams();
+            const values = {
+                groupId: document.getElementById('resultGroup')?.value,
+                questionnaireId: document.getElementById('resultTest')?.value,
+                startDate: document.getElementById('dateFrom')?.value,
+                endDate: document.getElementById('dateTo')?.value,
+                search: document.getElementById('resultSearch')?.value?.trim(),
+                level: document.getElementById('resultLevel')?.value,
+                risk: document.getElementById('resultRisk')?.value
+            };
+            Object.entries(values).forEach(([key, value]) => {
+                if (value && (includeGroup || key !== 'groupId')) params.append(key, value);
+            });
+            return params;
+        }
+
+        function resetResultFilters() {
+            ['resultGroup', 'resultTest', 'dateFrom', 'dateTo', 'resultSearch', 'resultLevel', 'resultRisk']
+                .forEach(id => {
+                    const element = document.getElementById(id);
+                    if (element) element.value = '';
+                });
+            loadResults();
+        }
+
         async function loadResults() {
             try {
-                const params = new URLSearchParams();
-                const group = document.getElementById('resultGroup')?.value;
-                const test = document.getElementById('resultTest')?.value;
-                const from = document.getElementById('dateFrom')?.value;
-                const to = document.getElementById('dateTo')?.value;
-
-                if (group) params.append('groupId', group);
-                if (test) params.append('questionnaireId', test);
-                if (from) params.append('startDate', from);
-                if (to) params.append('endDate', to);
+                const params = resultQueryParams();
 
                 const res = await fetch(`/api/results?${params}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
+                if (!res.ok) throw new Error(await res.text());
                 const resultsRaw = await res.json();
                 const results = Array.isArray(resultsRaw) ? resultsRaw : (resultsRaw?.data || []);
 
@@ -1952,12 +2072,12 @@
 
                 tbody.innerHTML = results.map(r => `
                     <tr>
-                        <td class="fw-semibold">${r.full_name}</td>
-                        <td>${r.group_name || '-'}</td>
-                        <td>${r.questionnaire_title}</td>
+                        <td class="fw-semibold">${esc(r.full_name)}</td>
+                        <td>${esc(r.group_name || '-')}</td>
+                        <td>${esc(r.questionnaire_title)}</td>
                         <td>
                             <span class="badge ${scoreBadgeFor(r)}">${r.score}</span>
-                            ${interpLabelFor(r) ? `<div class="small text-muted mt-1">${interpLabelFor(r)}</div>` : ''}
+                            ${interpLabelFor(r) ? `<div class="small text-muted mt-1">${esc(interpLabelFor(r))}</div>` : ''}
                         </td>
                         <td>${formatDateTime(r.completed_at)}</td>
                         <td>
@@ -1983,7 +2103,7 @@
             return s.length > n ? s.slice(0, n - 1) + '…' : s;
         }
 
-        const methFor = (r) => (window.findMethodologyByTitle ? window.findMethodologyByTitle(r.questionnaire_title) : null);
+        const methFor = methodologyForResult;
 
         // Инфографика строится ПОЛНОСТЬЮ из данных методик (methodologies.js),
         // без предположений о числе/названиях уровней — масштабируется на любые методики.
@@ -2012,7 +2132,6 @@
 
             // Цвета: приоритет — заданный в методике range.color; затем семантика
             // для типовых уровней; затем палитра по кругу (для любых нестандартных уровней).
-            const SEMANTIC = { low: '#06d6a0', medium: '#ffd166', high: '#ef476f' };
             const PALETTE = ['#4361ee', '#06d6a0', '#ffd166', '#ef476f', '#118ab2', '#9b5de5', '#f15bb5', '#00bbf9', '#fb8500'];
             let paletteIdx = 0;
             const buckets = new Map(); // label -> { count, color }
@@ -2023,7 +2142,7 @@
                 let label, color;
                 if (range) {
                     label = multiMeth ? `${shortText(m.title, 22)}: ${range.label}` : range.label;
-                    color = range.color || SEMANTIC[range.level];
+                    color = range.color || (range.attention ? '#ef476f' : range.level === 'medium' ? '#ffd166' : '#06d6a0');
                 } else {
                     label = t('level.none');
                     color = '#adb5bd';
@@ -2115,7 +2234,7 @@
         function scoreBadgeFor(r) {
             const i = interpForResult(r);
             if (i) {
-                return i.level === 'high' ? 'bg-danger'
+                return i.attention ? 'bg-danger'
                     : i.level === 'medium' ? 'bg-warning text-dark'
                     : 'bg-success';
             }
@@ -2146,41 +2265,42 @@
                 const result = results.find(r => r.id === resultId);
                 if (!result) return;
 
-                const meth = window.findMethodologyByTitle ? window.findMethodologyByTitle(result.questionnaire_title) : null;
+                const meth = methodologyForResult(result);
                 const sc = (meth && window.scoreMethodology) ? window.scoreMethodology(meth, result.answers || {}) : null;
 
-                const alertClass = (lvl) => lvl === 'high' ? 'alert-danger' : lvl === 'medium' ? 'alert-warning' : 'alert-success';
-                const badgeClass = (lvl) => lvl === 'high' ? 'bg-danger' : lvl === 'medium' ? 'bg-warning text-dark' : 'bg-success';
+                const badgeClass = (range) => range.attention
+                    ? 'bg-danger'
+                    : range.level === 'medium' ? 'bg-warning text-dark' : 'bg-success';
 
                 let summaryHtml, breakdownHtml = '';
                 if (sc) {
                     // Предупреждения шкал достоверности
                     breakdownHtml += sc.validity.filter(v => v.failed).map(v => `
                         <div class="alert alert-warning py-2 mb-2">
-                            <i class="bi bi-exclamation-triangle me-1"></i>${v.warning || v.name} (${v.value})
+                            <i class="bi bi-exclamation-triangle me-1"></i>${esc(v.warning || v.name)} (${v.value})
                         </div>`).join('');
                     // Таблица по шкалам
                     breakdownHtml += `
                         <table class="table table-sm align-middle">
                             <thead><tr><th>${t('rmodal.scale')}</th><th>${t('table.score')}</th><th>${t('rmodal.interpretation')}</th></tr></thead>
                             <tbody>
-                                ${sc.scales.map(s => `
+                                ${sc.scales.filter(s => s.display !== false).map(s => `
                                     <tr>
-                                        <td>${s.name}</td>
-                                        <td><span class="badge ${s.interp ? badgeClass(s.interp.level) : 'bg-secondary'}">${s.raw}${s.maxScore != null ? ' / ' + s.maxScore : ''}</span></td>
-                                        <td>${s.interp ? s.interp.label : '—'}</td>
+                                        <td>${esc(s.name)}</td>
+                                        <td><span class="badge ${s.interp ? badgeClass(s.interp) : 'bg-secondary'}">${s.raw}${s.maxScore != null ? ' / ' + s.maxScore : ''}</span></td>
+                                        <td>${s.interp ? esc(s.interp.label) : '—'}</td>
                                     </tr>`).join('')}
                             </tbody>
                         </table>`;
-                    summaryHtml = `<p class="text-muted mb-2">${t('table.test')}: ${result.questionnaire_title}</p>`;
+                    summaryHtml = `<p class="text-muted mb-2">${t('table.test')}: ${esc(result.questionnaire_title)}</p>`;
                 } else {
-                    summaryHtml = `<p class="text-muted">${t('table.test')}: ${result.questionnaire_title} | ${t('table.score')}: <strong>${result.score}</strong></p>`;
+                    summaryHtml = `<p class="text-muted">${t('table.test')}: ${esc(result.questionnaire_title)} | ${t('table.score')}: <strong>${result.score}</strong></p>`;
                 }
 
                 const body = document.getElementById('resultModalBody');
                 body.innerHTML = `
                     <div class="d-flex justify-content-between align-items-start">
-                        <h5>${result.full_name}</h5>
+                        <h5>${esc(result.full_name)}</h5>
                         <button class="btn btn-sm btn-outline-secondary" onclick="printResultReport(${result.id})">
                             <i class="bi bi-printer me-1"></i>${t('report.print')}
                         </button>
@@ -2194,7 +2314,7 @@
                             <thead><tr><th>#</th><th>${t('rmodal.answers')}</th></tr></thead>
                             <tbody>
                                 ${Object.entries(result.answers || {}).map(([key, val]) => `
-                                    <tr><td>${parseInt(key) + 1}</td><td>${Array.isArray(val) ? val.join(', ') : val}</td></tr>
+                                    <tr><td>${parseInt(key) + 1}</td><td>${esc(Array.isArray(val) ? val.join(', ') : val)}</td></tr>
                                 `).join('')}
                             </tbody>
                         </table>
@@ -2213,15 +2333,15 @@
 
         // Разбивка одного результата по шкалам (или сырой балл для не-методик)
         function reportResultBody(r) {
-            const m = window.findMethodologyByTitle ? window.findMethodologyByTitle(r.questionnaire_title) : null;
+            const m = methodologyForResult(r);
             if (m && window.scoreMethodology) {
                 const sc = window.scoreMethodology(m, r.answers || {});
                 const warns = sc.validity.filter(v => v.failed)
-                    .map(v => `<p class="warn">⚠ ${v.warning || v.name} (${v.value})</p>`).join('');
-                const rows = sc.scales.map(s => `
-                    <tr><td>${s.name}</td>
+                    .map(v => `<p class="warn">⚠ ${esc(v.warning || v.name)} (${v.value})</p>`).join('');
+                const rows = sc.scales.filter(s => s.display !== false).map(s => `
+                    <tr><td>${esc(s.name)}</td>
                         <td>${s.raw}${s.maxScore != null ? ' / ' + s.maxScore : ''}</td>
-                        <td>${s.interp ? s.interp.label : '—'}</td></tr>`).join('');
+                        <td>${s.interp ? esc(s.interp.label) : '—'}</td></tr>`).join('');
                 return `${warns}
                     <table class="scales">
                         <thead><tr><th>${t('rmodal.scale')}</th><th>${t('table.score')}</th><th>${t('rmodal.interpretation')}</th></tr></thead>
@@ -2235,7 +2355,7 @@
         function reportDynamics(group) {
             if (group.length < 2) return '';
             const seq = group.map(r => {
-                const m = window.findMethodologyByTitle ? window.findMethodologyByTitle(r.questionnaire_title) : null;
+                const m = methodologyForResult(r);
                 const sc = (m && window.scoreMethodology) ? window.scoreMethodology(m, r.answers || {}) : null;
                 return sc && sc.primary ? sc.primary.raw : r.score;
             });
@@ -2246,7 +2366,7 @@
             const date = new Date().toLocaleDateString(getLang() === 'kz' ? 'kk-KZ' : 'ru-RU');
 
             // Группируем по тесту, внутри группы — по дате (от старых к новым) для динамики
-            const byTest = {};
+            const byTest = Object.create(null);
             results.forEach(r => { (byTest[r.questionnaire_title] = byTest[r.questionnaire_title] || []).push(r); });
             Object.values(byTest).forEach(g => g.sort((a, b) => new Date(a.completed_at || 0) - new Date(b.completed_at || 0)));
 
@@ -2255,7 +2375,7 @@
                     const group = byTest[testTitle];
                     return `
                         <div class="result">
-                            <h3>${testTitle}</h3>
+                            <h3>${esc(testTitle)}</h3>
                             ${reportDynamics(group)}
                             ${group.map(r => `
                                 <div class="run">
@@ -2269,18 +2389,199 @@
                 <h1>${t('report.title')}</h1>
                 <p class="date">${date}</p>
                 <table class="info">
-                    <tr><td>${t('table.fio')}</td><td>${student.full_name || '—'}</td></tr>
-                    <tr><td>${t('table.group')}</td><td>${student.group_name || '—'}</td></tr>
+                    <tr><td>${t('table.fio')}</td><td>${esc(student.full_name || '—')}</td></tr>
+                    <tr><td>${t('table.group')}</td><td>${esc(student.group_name || '—')}</td></tr>
                     <tr><td>${t('table.birth_date')}</td><td>${student.birth_date ? formatDate(student.birth_date) : '—'}${student.age != null ? ' (' + student.age + ' ' + t('unit.years') + ')' : ''}</td></tr>
-                    <tr><td>${t('field.school')}</td><td>${student.school || '—'}</td></tr>
+                    <tr><td>${t('field.school')}</td><td>${esc(student.school || '—')}</td></tr>
                     <tr><td>${t('field.family_type')}</td><td>${reportFamilyLabel(student.family_type)}</td></tr>
-                    <tr><td>${t('field.lives_with')}</td><td>${student.lives_with || '—'}</td></tr>
+                    <tr><td>${t('field.lives_with')}</td><td>${esc(student.lives_with || '—')}</td></tr>
                 </table>
                 <h2>${t('report.results')}</h2>
                 ${resultsHtml}
                 <div class="notes"><strong>${t('report.notes')}:</strong><div class="line"></div><div class="line"></div></div>
-                <div class="sign">${t('report.psychologist')}: ____________________ / ${currentUser.fullName || ''}</div>
+                <div class="sign">${t('report.psychologist')}: ____________________ / ${esc(currentUser.fullName || '')}</div>
             `;
+        }
+
+        let summaryReportHtml = '';
+
+        function riskInfoForResult(result) {
+            if (typeof result.at_risk === 'boolean') {
+                return {
+                    atRisk: result.at_risk,
+                    reasons: Array.isArray(result.risk_reasons) ? result.risk_reasons : []
+                };
+            }
+            const methodology = methodologyForResult(result);
+            return methodology && window.resultAttention
+                ? window.resultAttention(methodology, result.answers || {})
+                : { atRisk: false, reasons: [] };
+        }
+
+        function summaryLevelForResult(result) {
+            if (result.interpretation_label) return result.interpretation_label;
+            return interpLabelFor(result) || t('level.none');
+        }
+
+        function countUniqueStudents(results) {
+            return new Set(results.map(result => result.user_id)).size;
+        }
+
+        function countRiskStudents(results) {
+            return new Set(results.filter(result => riskInfoForResult(result).atRisk).map(result => result.user_id)).size;
+        }
+
+        function summaryFilterDescription(scope, groupName) {
+            const parts = [];
+            if (scope === 'group') parts.push(`${t('table.group')}: ${esc(groupName)}`);
+            const testSelect = document.getElementById('resultTest');
+            if (testSelect?.value) parts.push(`${t('table.test')}: ${esc(testSelect.selectedOptions[0]?.textContent || '')}`);
+            const from = document.getElementById('dateFrom')?.value;
+            const to = document.getElementById('dateTo')?.value;
+            if (from || to) parts.push(`${t('report.period')}: ${esc(from || '…')} — ${esc(to || '…')}`);
+            const search = document.getElementById('resultSearch')?.value?.trim();
+            if (search) parts.push(`${t('report.student_search')}: ${esc(search)}`);
+            const level = document.getElementById('resultLevel');
+            if (level?.value) parts.push(`${t('report.level_filter')}: ${esc(level.selectedOptions[0]?.textContent || '')}`);
+            const risk = document.getElementById('resultRisk');
+            if (risk?.value) parts.push(`${t('risk.title')}: ${esc(risk.selectedOptions[0]?.textContent || '')}`);
+            return parts.length ? parts.join(' · ') : t('report.all_data');
+        }
+
+        function buildSummaryReport(scope, students, results, groupName) {
+            const title = scope === 'group'
+                ? `${t('report.group_title')}: ${esc(groupName)}`
+                : t('report.college_title');
+            const diagnosed = countUniqueStudents(results);
+            const riskStudents = countRiskStudents(results);
+            const coverage = students.length ? Math.round(diagnosed * 100 / students.length) : 0;
+
+            const byTest = new Map();
+            results.forEach(result => {
+                const key = result.questionnaire_title || '—';
+                if (!byTest.has(key)) byTest.set(key, []);
+                byTest.get(key).push(result);
+            });
+            const testRows = [...byTest.entries()].map(([testTitle, testResults]) => {
+                const levels = new Map();
+                testResults.forEach(result => {
+                    const label = summaryLevelForResult(result);
+                    levels.set(label, (levels.get(label) || 0) + 1);
+                });
+                const unique = countUniqueStudents(testResults);
+                return `<tr>
+                    <td>${esc(testTitle)}</td>
+                    <td>${unique}</td>
+                    <td>${testResults.length}</td>
+                    <td>${students.length ? Math.round(unique * 100 / students.length) : 0}%</td>
+                    <td>${[...levels.entries()].map(([label, count]) => `${esc(label)}: ${count}`).join('<br>') || '—'}</td>
+                    <td>${countRiskStudents(testResults)}</td>
+                </tr>`;
+            }).join('');
+
+            let scopeRows = '';
+            if (scope === 'college') {
+                const groups = [...new Set(students.map(student => student.group_name || '—'))].sort();
+                scopeRows = `
+                    <h2>${t('report.by_groups')}</h2>
+                    <table class="report-table table table-sm">
+                        <thead><tr><th>${t('table.group')}</th><th>${t('table.students')}</th><th>${t('report.diagnosed')}</th><th>${t('res.total')}</th><th>${t('risk.title')}</th></tr></thead>
+                        <tbody>${groups.map(group => {
+                            const groupStudents = students.filter(student => (student.group_name || '—') === group);
+                            const groupResults = results.filter(result => (result.group_name || '—') === group);
+                            return `<tr><td>${esc(group)}</td><td>${groupStudents.length}</td><td>${countUniqueStudents(groupResults)}</td><td>${groupResults.length}</td><td>${countRiskStudents(groupResults)}</td></tr>`;
+                        }).join('')}</tbody>
+                    </table>`;
+            } else {
+                scopeRows = `
+                    <h2>${t('report.students_list')}</h2>
+                    <table class="report-table table table-sm">
+                        <thead><tr><th>${t('table.student')}</th><th>${t('res.total')}</th><th>${t('table.date')}</th><th>${t('risk.title')}</th></tr></thead>
+                        <tbody>${students.slice().sort((a, b) => String(a.full_name).localeCompare(String(b.full_name))).map(student => {
+                            const studentResults = results.filter(result => result.user_id === student.id);
+                            const latest = studentResults.reduce((value, result) => {
+                                const timestamp = new Date(result.completed_at || 0).getTime();
+                                return timestamp > value ? timestamp : value;
+                            }, 0);
+                            const reasons = [...new Set(studentResults.flatMap(result =>
+                                riskInfoForResult(result).reasons.map(reason => reason.label)
+                            ))];
+                            return `<tr><td>${esc(student.full_name)}</td><td>${studentResults.length}</td><td>${latest ? formatDateTime(new Date(latest).toISOString()) : '—'}</td><td>${reasons.length ? esc(reasons.join('; ')) : '—'}</td></tr>`;
+                        }).join('')}</tbody>
+                    </table>`;
+            }
+
+            const riskByStudent = new Map();
+            results.forEach(result => {
+                const risk = riskInfoForResult(result);
+                if (!risk.atRisk) return;
+                const current = riskByStudent.get(result.user_id) || { name: result.full_name, group: result.group_name, reasons: new Set() };
+                risk.reasons.forEach(reason => current.reasons.add(reason.label));
+                riskByStudent.set(result.user_id, current);
+            });
+            const riskRows = [...riskByStudent.values()].map(item =>
+                `<tr><td>${esc(item.name)}</td><td>${esc(item.group || '—')}</td><td>${esc([...item.reasons].join('; '))}</td></tr>`
+            ).join('');
+
+            return `
+                <h1>${title}</h1>
+                <p class="date">${new Date().toLocaleDateString(getLang() === 'kz' ? 'kk-KZ' : 'ru-RU')}</p>
+                <p class="meta">${summaryFilterDescription(scope, groupName)}</p>
+                <table class="info">
+                    <tr><td>${t('table.students')}</td><td>${students.length}</td></tr>
+                    <tr><td>${t('report.diagnosed')}</td><td>${diagnosed} (${coverage}%)</td></tr>
+                    <tr><td>${t('res.total')}</td><td>${results.length}</td></tr>
+                    <tr><td>${t('risk.title')}</td><td>${riskStudents}</td></tr>
+                </table>
+                <h2>${t('report.by_tests')}</h2>
+                <table class="report-table table table-sm">
+                    <thead><tr><th>${t('table.test')}</th><th>${t('report.diagnosed')}</th><th>${t('res.total')}</th><th>${t('report.coverage')}</th><th>${t('res.chart_levels')}</th><th>${t('risk.title')}</th></tr></thead>
+                    <tbody>${testRows || `<tr><td colspan="6">${t('report.no_results')}</td></tr>`}</tbody>
+                </table>
+                ${scopeRows}
+                <h2>${t('risk.title')}</h2>
+                <table class="report-table table table-sm">
+                    <thead><tr><th>${t('table.student')}</th><th>${t('table.group')}</th><th>${t('risk.reason')}</th></tr></thead>
+                    <tbody>${riskRows || `<tr><td colspan="3">${t('risk.empty')}</td></tr>`}</tbody>
+                </table>
+                <div class="notes"><strong>${t('report.notes')}:</strong><div class="line"></div><div class="line"></div></div>
+                <div class="sign">${t('report.psychologist')}: ____________________ / ${esc(currentUser.fullName || '')}</div>
+            `;
+        }
+
+        async function openSummaryReport(scope) {
+            const groupName = document.getElementById('resultGroup')?.value || '';
+            if (scope === 'group' && !groupName) {
+                alert(t('results.select_group'));
+                return;
+            }
+            try {
+                const params = resultQueryParams(false);
+                if (scope === 'group') params.set('groupId', groupName);
+                const [studentsResponse, resultsResponse] = await Promise.all([
+                    fetch('/api/students', { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`/api/results?${params}`, { headers: { 'Authorization': `Bearer ${token}` } })
+                ]);
+                if (!studentsResponse.ok || !resultsResponse.ok) throw new Error(t('msg.error'));
+                const allStudents = await studentsResponse.json();
+                const results = await resultsResponse.json();
+                const studentSearch = document.getElementById('resultSearch')?.value?.trim().toLocaleLowerCase() || '';
+                const students = (Array.isArray(allStudents) ? allStudents : [])
+                    .filter(student => scope !== 'group' || student.group_name === groupName)
+                    .filter(student => !studentSearch || String(student.full_name || '').toLocaleLowerCase().includes(studentSearch));
+                summaryReportHtml = buildSummaryReport(scope, students, Array.isArray(results) ? results : [], groupName);
+                document.getElementById('summaryReportTitle').textContent = scope === 'group'
+                    ? `${t('report.group_title')}: ${groupName}`
+                    : t('report.college_title');
+                document.getElementById('summaryReportBody').innerHTML = summaryReportHtml;
+                new bootstrap.Modal(document.getElementById('summaryReportModal')).show();
+            } catch (error) {
+                alert(`${t('msg.error')}: ${error.message}`);
+            }
+        }
+
+        function printOpenSummaryReport() {
+            if (summaryReportHtml) printReportHtml(summaryReportHtml);
         }
 
         function printReportHtml(inner) {
@@ -2300,6 +2601,8 @@
                     table.info td:first-child { width:35%; font-weight:bold; background:#f3f3f3; }
                     table.scales th, table.scales td { border:1px solid #999; padding:4px 6px; text-align:left; }
                     table.scales th { background:#f3f3f3; }
+                    table.report-table th, table.report-table td { border:1px solid #999; padding:4px 6px; text-align:left; vertical-align:top; }
+                    table.report-table th { background:#f3f3f3; }
                     .result { page-break-inside: avoid; margin-bottom:10px; }
                     .warn { color:#b00; font-weight:bold; margin:4px 0; }
                     .muted { color:#777; }
@@ -2390,7 +2693,7 @@
                     const select = document.getElementById(selectId);
                     if (select) {
                         groups.forEach(g => {
-                            select.innerHTML += `<option value="${g.group_name}">${g.group_name}</option>`;
+                            select.innerHTML += `<option value="${esc(g.group_name)}">${esc(g.group_name)}</option>`;
                         });
                     }
                 });
@@ -2434,9 +2737,11 @@
             new bootstrap.Modal(document.getElementById('passwordModal')).show();
         }
 
-        function openResetStudentPassword(id, name) {
+        function openResetStudentPassword(id) {
             pwMode = 'student';
             pwStudentId = id;
+            const student = adminStudentsCache.find(item => item.id === id);
+            const name = student ? student.full_name : '';
             document.getElementById('passwordForm').reset();
             document.getElementById('pwError').classList.add('d-none');
             document.getElementById('pwCurrentWrap').classList.add('d-none');
@@ -2470,13 +2775,17 @@
                 if (!res.ok) throw new Error(data.error || t('msg.error'));
                 bootstrap.Modal.getInstance(document.getElementById('passwordModal')).hide();
                 alert(pwMode === 'self' ? t('pw.changed') : t('pw.reset_done'));
+                if (pwMode === 'self') logout();
             } catch (err) {
                 pwShowError(err.message);
             }
         });
 
-        ['resultGroup', 'resultTest', 'dateFrom', 'dateTo'].forEach(id => {
+        ['resultGroup', 'resultTest', 'dateFrom', 'dateTo', 'resultLevel', 'resultRisk'].forEach(id => {
             document.getElementById(id)?.addEventListener('change', loadResults);
+        });
+        document.getElementById('resultSearch')?.addEventListener('keydown', event => {
+            if (event.key === 'Enter') loadResults();
         });
     </script>
 </body>
