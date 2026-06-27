@@ -30,12 +30,25 @@ function validateConfiguredSecret(name, value, minimumLength) {
     }
 }
 
+function validateDatabasePassword(value) {
+    if (!value) return;
+    if (/replace|changeme|example/i.test(value)) {
+        throw new Error('DB_PASSWORD содержит демонстрационное значение');
+    }
+    if (value.length < 12) {
+        console.warn(
+            ' DB_PASSWORD короче 12 символов. Приложение продолжит запуск для совместимости, ' +
+            'но пароль MySQL рекомендуется планово усилить.'
+        );
+    }
+}
+
 const configuredJwtSecret = requiredProductionEnv('JWT_SECRET');
 const JWT_SECRET = configuredJwtSecret || crypto.randomBytes(48).toString('hex');
 const DB_PASSWORD = requiredProductionEnv('DB_PASSWORD');
 const SUPERADMIN_PASSWORD = requiredProductionEnv('SUPERADMIN_PASSWORD');
 validateConfiguredSecret('JWT_SECRET', configuredJwtSecret, 32);
-validateConfiguredSecret('DB_PASSWORD', DB_PASSWORD, 12);
+validateDatabasePassword(DB_PASSWORD);
 validateConfiguredSecret('SUPERADMIN_PASSWORD', SUPERADMIN_PASSWORD, 12);
 
 if (!configuredJwtSecret) {
@@ -2250,5 +2263,6 @@ module.exports = {
     initializeApplication,
     validateQuestionnaireAnswers,
     fallbackQuestionnaireScore,
-    deriveResultMetadata
+    deriveResultMetadata,
+    validateDatabasePassword
 };

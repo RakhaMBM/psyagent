@@ -6,7 +6,8 @@ process.env.SUPERADMIN_PASSWORD = 'unit-test-superadmin-password';
 const {
     validateQuestionnaireAnswers,
     fallbackQuestionnaireScore,
-    deriveResultMetadata
+    deriveResultMetadata,
+    validateDatabasePassword
 } = require('../server');
 
 const questions = [
@@ -79,4 +80,18 @@ test('метаданные результата содержат уровень 
     assert.equal(result.interpretation_label, 'Высокий');
     assert.equal(result.at_risk, true);
     assert.deepEqual(result.risk_reasons, [{ scale: 'Тестовая методика', label: 'Высокий' }]);
+});
+
+test('короткий существующий пароль БД не блокирует запуск, placeholder отклоняется', () => {
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+        assert.doesNotThrow(() => validateDatabasePassword('legacy'));
+        assert.throws(
+            () => validateDatabasePassword('replace-with-a-password'),
+            /демонстрационное значение/
+        );
+    } finally {
+        console.warn = originalWarn;
+    }
 });
