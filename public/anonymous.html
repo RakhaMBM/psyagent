@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Анонимный опрос | Psyagent</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-dark bg-primary shadow-sm">
+        <div class="container">
+            <span class="navbar-brand fw-bold"><i class="bi bi-shield-check me-2"></i>Psyagent</span>
+            <button class="btn btn-outline-light btn-sm" type="button" data-action="toggleLang" title="Тіл / Язык">
+                <i class="bi bi-translate me-1"></i><span id="langLabel">KZ</span>
+            </button>
+        </div>
+    </nav>
+
+    <main class="container py-4 py-md-5 anonymous-survey-shell">
+        <div id="surveyLoading" class="text-center text-muted py-5">
+            <div class="spinner-border text-primary mb-3" role="status"></div>
+            <p data-i18n="anonymous.loading">Загрузка анонимного опроса…</p>
+        </div>
+
+        <div id="surveyError" class="alert alert-danger d-none"></div>
+
+        <div id="surveyDone" class="card border-0 shadow-sm rounded-4 d-none">
+            <div class="card-body p-4 p-md-5 text-center">
+                <i class="bi bi-check-circle-fill text-success display-3"></i>
+                <h2 class="h4 mt-3" data-i18n="anonymous.thanks_title">Спасибо за ответ</h2>
+                <p class="text-muted mb-0" data-i18n="anonymous.thanks_text">Ответ сохранён без имени, логина и других персональных данных.</p>
+            </div>
+        </div>
+
+        <form id="anonymousSurveyForm" class="d-none">
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-body p-4 p-md-5">
+                    <span class="badge bg-primary-subtle text-primary mb-3" id="surveyGroup"></span>
+                    <h1 class="h3 mb-3" id="surveyTitle"></h1>
+                    <p class="text-muted mb-3" id="surveyInstruction"></p>
+                    <div class="alert alert-success mb-0">
+                        <i class="bi bi-incognito me-2"></i>
+                        <span data-i18n="anonymous.privacy">Опрос не запрашивает и не сохраняет ФИО, логин, номер студента или IP-адрес.</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="anonymousQuestions"></div>
+
+            <div class="d-grid">
+                <button type="submit" class="btn btn-primary btn-lg" id="anonymousSubmit">
+                    <span class="btn-text" data-i18n="anonymous.submit">Отправить анонимно</span>
+                    <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+                </button>
+            </div>
+        </form>
+    </main>
+
+    <script src="/i18n.js"></script>
+    <script src="/common.js"></script>
+    <script src="/event-actions.js"></script>
+    <script src="/anonymous.js"></script>
+</body>
+</html>

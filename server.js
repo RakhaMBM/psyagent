@@ -9,6 +9,7 @@ const {
     findMethodologyByTitle,
     scoreMethodology
 } = require('./public/methodologies');
+const { PSY_ANONYMOUS_SURVEYS } = require('./public/anonymous-surveys');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -47,9 +48,13 @@ const configuredJwtSecret = requiredProductionEnv('JWT_SECRET');
 const JWT_SECRET = configuredJwtSecret || crypto.randomBytes(48).toString('hex');
 const DB_PASSWORD = requiredProductionEnv('DB_PASSWORD');
 const SUPERADMIN_PASSWORD = requiredProductionEnv('SUPERADMIN_PASSWORD');
+const DEFAULT_STUDENT_PASSWORD = String(process.env.DEFAULT_STUDENT_PASSWORD || '').trim();
 validateConfiguredSecret('JWT_SECRET', configuredJwtSecret, 32);
 validateDatabasePassword(DB_PASSWORD);
 validateConfiguredSecret('SUPERADMIN_PASSWORD', SUPERADMIN_PASSWORD, 12);
+if (DEFAULT_STUDENT_PASSWORD && DEFAULT_STUDENT_PASSWORD.length < 8) {
+    throw new Error('DEFAULT_STUDENT_PASSWORD должен быть не короче 8 символов');
+}
 
 if (!configuredJwtSecret) {
     console.warn(' JWT_SECRET не задан: используется временный случайный ключ только для этой сессии.');
@@ -94,6 +99,10 @@ const baseDbConfig = {
 
 const DEFAULT_DB_NAME = process.env.DB_NAME || 'psych_diagnostic';
 const CONTROL_DB_NAME = process.env.CONTROL_DB_NAME || 'psych_control';
+const TENANT_DB_PREFIX = safeDbName(process.env.TENANT_DB_PREFIX || 'psych_t_');
+if (!TENANT_DB_PREFIX || !TENANT_DB_PREFIX.endsWith('_')) {
+    throw new Error('TENANT_DB_PREFIX должен содержать безопасный префикс и заканчиваться подчёркиванием');
+}
 
 // БД «колледжа по умолчанию» (текущая) — чтобы существующий вход без кода колледжа работал.
 const pool = mysql2.createPool({ ...baseDbConfig, database: DEFAULT_DB_NAME });
@@ -362,6 +371,28 @@ async function ensureTenantSchema(db) {
             ip_address VARCHAR(45),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+        `CREATE TABLE IF NOT EXISTS anonymous_campaigns (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            survey_key VARCHAR(80) NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            survey_data JSON NOT NULL,
+            target_group VARCHAR(100),
+            access_token CHAR(64) UNIQUE NOT NULL,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            closes_at DATETIME NULL,
+            created_by INT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+            KEY idx_anonymous_campaigns_active (is_active, closes_at)
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+        `CREATE TABLE IF NOT EXISTS anonymous_responses (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            campaign_id INT NOT NULL,
+            answers JSON NOT NULL,
+            submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (campaign_id) REFERENCES anonymous_campaigns(id) ON DELETE CASCADE,
+            KEY idx_anonymous_responses_campaign (campaign_id, submitted_at)
         ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
     ];
     for (const sql of stmts) {
@@ -573,6 +604,34 @@ function optionText(option) {
 
 function isPlainObject(value) {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function findAnonymousSurvey(key) {
+    return PSY_ANONYMOUS_SURVEYS.find(survey => survey.id === key) || null;
+}
+
+function validateAnonymousAnswers(survey, answers) {
+    if (!isPlainObject(answers)) return 'Ответы должны быть объектом';
+    const knownIds = new Set(survey.questions.map(question => question.id));
+    if (Object.keys(answers).some(key => !knownIds.has(key))) {
+        return 'Ответы содержат неизвестный вопрос';
+    }
+    for (const question of survey.questions) {
+        const value = answers[question.id];
+        const dependency = question.showWhen;
+        const isVisible = !dependency || (
+            answers[dependency.questionId] != null &&
+            answers[dependency.questionId] !== dependency.notEquals
+        );
+        if (!isVisible) continue;
+        if (question.required !== false && value == null) {
+            return `Ответьте на вопрос «${question.text}»`;
+        }
+        if (value != null && !question.options.includes(value)) {
+            return `Недопустимый ответ на вопрос «${question.text}»`;
+        }
+    }
+    return null;
 }
 
 function validateQuestionnaireAnswers(questions, answers) {
@@ -894,16 +953,17 @@ app.post('/api/students', authenticateToken, requireAdmin, async (req, res) => {
             group_name, email, phone,
             family_type, lives_with, school, home_address
         } = req.body;
-        
-        if (!username || !password || !full_name || !birth_date) {
+        const effectivePassword = String(password || DEFAULT_STUDENT_PASSWORD).trim();
+
+        if (!username || !effectivePassword || !full_name || !birth_date) {
             return res.status(400).json({ error: 'Заполните обязательные поля' });
         }
-        if (String(password).length < 8) {
+        if (effectivePassword.length < 8) {
             return res.status(400).json({ error: 'Пароль должен быть не короче 8 символов' });
         }
-        
-        const hashedPassword = await bcrypt.hash(password, 10);
-        
+
+        const hashedPassword = await bcrypt.hash(effectivePassword, 10);
+
         const conn = await req.db.getConnection();
         await conn.beginTransaction();
         
@@ -1059,7 +1119,8 @@ app.post('/api/students/import', authenticateToken, requireAdmin, async (req, re
 
             const fullName = String(s.full_name || '').trim() || username;
             const suppliedPassword = String(s.password || '').trim();
-            const password = suppliedPassword || `${crypto.randomBytes(9).toString('base64url')}Aa1!`;
+            const password = suppliedPassword || DEFAULT_STUDENT_PASSWORD ||
+                `${crypto.randomBytes(9).toString('base64url')}Aa1!`;
             if (suppliedPassword && suppliedPassword.length < 8) {
                 errors.push(`Строка ${rowNum}: пароль короче 8 символов`);
                 continue;
@@ -1380,11 +1441,27 @@ app.get('/api/questionnaires/:id', authenticateToken, async (req, res) => {
             [req.params.id]
         );
         
+        const questionnaire = { ...questionnaires[0] };
+        if (req.user.role === 'student') {
+            const methodology = parseJsonValue(questionnaire.methodology_data, null);
+            questionnaire.instruction = methodology && methodology.instruction
+                ? String(methodology.instruction)
+                : null;
+            delete questionnaire.methodology_data;
+            delete questionnaire.created_by;
+            delete questionnaire.target_groups;
+        }
+
         res.json({
-            ...questionnaires[0],
+            ...questionnaire,
             questions: questions.map(q => ({
                 ...q,
-                options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options,
+                options: (() => {
+                    const options = parseJsonValue(q.options, []);
+                    return req.user.role === 'student'
+                        ? options.map(optionText)
+                        : options;
+                })(),
                 scaleLabels: typeof q.scale_labels === 'string' ? JSON.parse(q.scale_labels) : q.scale_labels
             }))
         });
@@ -1718,7 +1795,7 @@ app.post('/api/results/complete', authenticateToken, requireStudent, async (req,
         );
         await logAction(conn, req.user.id, 'COMPLETE_TEST', 'result', Number(resultId), { score: finalScore });
         await conn.commit();
-        res.json({ message: 'Тест завершён', score: finalScore });
+        res.json({ message: 'Тест завершён' });
     } catch (error) {
         await conn.rollback();
         console.error('Ошибка завершения:', error);
@@ -1890,11 +1967,256 @@ app.get('/api/groups', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 // ============================================
+// АНОНИМНЫЕ ОПРОСЫ — отдельный неперсональный контур
+// ============================================
+
+// Доступные встроенные шаблоны для психолога.
+app.get('/api/anonymous-campaigns/templates', authenticateToken, requireAdmin, (req, res) => {
+    res.json(PSY_ANONYMOUS_SURVEYS.map(survey => ({
+        id: survey.id,
+        title: survey.title,
+        ageRange: survey.ageRange,
+        questionsCount: survey.questions.length
+    })));
+});
+
+// Кампании колледжа и число обезличенных ответов.
+app.get('/api/anonymous-campaigns', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const [rows] = await req.db.execute(`
+            SELECT c.id, c.survey_key, c.title, c.target_group, c.access_token,
+                   c.is_active, c.closes_at, c.created_at, COUNT(r.id) AS response_count
+            FROM anonymous_campaigns c
+            LEFT JOIN anonymous_responses r ON r.campaign_id = c.id
+            GROUP BY c.id
+            ORDER BY c.created_at DESC
+        `);
+        res.json(rows.map(row => ({
+            ...row,
+            public_path: `/survey/${encodeURIComponent(req.tenant.code)}/${row.access_token}`
+        })));
+    } catch (error) {
+        console.error('Ошибка списка анонимных опросов:', error);
+        res.status(500).json({ error: 'Ошибка загрузки анонимных опросов' });
+    }
+});
+
+// Создание ссылки на встроенную анонимную анкету.
+app.post('/api/anonymous-campaigns', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const survey = findAnonymousSurvey(req.body && req.body.surveyKey);
+        if (!survey) return res.status(400).json({ error: 'Неизвестный шаблон опроса' });
+
+        const targetGroup = String(req.body.targetGroup || '').trim().slice(0, 100) || null;
+        const closesAtRaw = String(req.body.closesAt || '').trim();
+        let closesAt = null;
+        if (closesAtRaw) {
+            const parsed = new Date(closesAtRaw);
+            if (Number.isNaN(parsed.getTime())) {
+                return res.status(400).json({ error: 'Некорректная дата закрытия' });
+            }
+            closesAt = parsed;
+        }
+        const accessToken = crypto.randomBytes(32).toString('hex');
+        const [result] = await req.db.execute(
+            `INSERT INTO anonymous_campaigns
+             (survey_key, title, survey_data, target_group, access_token, closes_at, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [
+                survey.id,
+                survey.title,
+                JSON.stringify(survey),
+                targetGroup,
+                accessToken,
+                closesAt,
+                req.user.id
+            ]
+        );
+        await logAction(req.db, req.user.id, 'CREATE_ANONYMOUS_CAMPAIGN', 'anonymous_campaign', result.insertId, {
+            surveyKey: survey.id,
+            targetGroup
+        });
+        res.status(201).json({
+            id: result.insertId,
+            public_path: `/survey/${encodeURIComponent(req.tenant.code)}/${accessToken}`
+        });
+    } catch (error) {
+        console.error('Ошибка создания анонимного опроса:', error);
+        res.status(500).json({ error: 'Ошибка создания анонимного опроса' });
+    }
+});
+
+// Открытие/закрытие приёма ответов.
+app.patch('/api/anonymous-campaigns/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        if (typeof req.body.is_active !== 'boolean') {
+            return res.status(400).json({ error: 'is_active должен быть логическим значением' });
+        }
+        const [result] = req.body.is_active
+            ? await req.db.execute(
+                'UPDATE anonymous_campaigns SET is_active = TRUE, closes_at = NULL WHERE id = ?',
+                [req.params.id]
+            )
+            : await req.db.execute(
+                'UPDATE anonymous_campaigns SET is_active = FALSE WHERE id = ?',
+                [req.params.id]
+            );
+        if (!result.affectedRows) return res.status(404).json({ error: 'Опрос не найден' });
+        await logAction(req.db, req.user.id, 'UPDATE_ANONYMOUS_CAMPAIGN', 'anonymous_campaign', Number(req.params.id), {
+            isActive: req.body.is_active
+        });
+        res.json({ message: 'Статус опроса изменён' });
+    } catch (error) {
+        console.error('Ошибка изменения анонимного опроса:', error);
+        res.status(500).json({ error: 'Ошибка изменения опроса' });
+    }
+});
+
+// Агрегированная статистика без выдачи отдельных анкет.
+app.get('/api/anonymous-campaigns/:id/report', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const [[campaign]] = await req.db.execute(
+            `SELECT id, title, survey_data, target_group, created_at, closes_at, is_active
+             FROM anonymous_campaigns WHERE id = ?`,
+            [req.params.id]
+        );
+        if (!campaign) return res.status(404).json({ error: 'Опрос не найден' });
+        const survey = parseJsonValue(campaign.survey_data, null);
+        if (!survey || !Array.isArray(survey.questions)) {
+            return res.status(500).json({ error: 'Повреждён снимок опроса' });
+        }
+        const [responses] = await req.db.execute(
+            'SELECT answers FROM anonymous_responses WHERE campaign_id = ? ORDER BY id',
+            [req.params.id]
+        );
+        const aggregates = survey.questions.map(question => {
+            const counts = Object.fromEntries(question.options.map(option => [option, 0]));
+            let answered = 0;
+            for (const response of responses) {
+                const answers = parseJsonValue(response.answers, {});
+                const value = answers[question.id];
+                if (Object.prototype.hasOwnProperty.call(counts, value)) {
+                    counts[value]++;
+                    answered++;
+                }
+            }
+            return {
+                id: question.id,
+                text: question.text,
+                answered,
+                skipped: responses.length - answered,
+                options: question.options.map(option => ({
+                    text: option,
+                    count: counts[option],
+                    percent: answered ? Number((counts[option] * 100 / answered).toFixed(1)) : 0
+                }))
+            };
+        });
+        res.json({
+            campaign: {
+                id: campaign.id,
+                title: campaign.title,
+                target_group: campaign.target_group,
+                created_at: campaign.created_at,
+                closes_at: campaign.closes_at,
+                is_active: Boolean(campaign.is_active)
+            },
+            response_count: responses.length,
+            questions: aggregates
+        });
+    } catch (error) {
+        console.error('Ошибка отчёта анонимного опроса:', error);
+        res.status(500).json({ error: 'Ошибка загрузки отчёта' });
+    }
+});
+
+app.delete('/api/anonymous-campaigns/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const [result] = await req.db.execute('DELETE FROM anonymous_campaigns WHERE id = ?', [req.params.id]);
+        if (!result.affectedRows) return res.status(404).json({ error: 'Опрос не найден' });
+        await logAction(req.db, req.user.id, 'DELETE_ANONYMOUS_CAMPAIGN', 'anonymous_campaign', Number(req.params.id));
+        res.json({ message: 'Анонимный опрос и его ответы удалены' });
+    } catch (error) {
+        console.error('Ошибка удаления анонимного опроса:', error);
+        res.status(500).json({ error: 'Ошибка удаления опроса' });
+    }
+});
+
+// Публичное чтение анкеты по коду колледжа и случайному токену.
+app.get('/api/anonymous-surveys/:college/:token', async (req, res) => {
+    try {
+        const tenant = await getTenantByCode(req.params.college);
+        if (!tenant) return res.status(404).json({ error: 'Опрос не найден' });
+        const db = tenantPool(tenant.db_name);
+        const [[campaign]] = await db.execute(
+            `SELECT id, title, survey_data, target_group
+             FROM anonymous_campaigns
+             WHERE access_token = ? AND is_active = TRUE
+               AND (closes_at IS NULL OR closes_at >= NOW())`,
+            [req.params.token]
+        );
+        if (!campaign) return res.status(404).json({ error: 'Опрос закрыт или ссылка недействительна' });
+        res.json({
+            campaign: {
+                id: campaign.id,
+                title: campaign.title,
+                target_group: campaign.target_group
+            },
+            survey: parseJsonValue(campaign.survey_data, null)
+        });
+    } catch (error) {
+        console.error('Ошибка публичного анонимного опроса:', error);
+        res.status(500).json({ error: 'Ошибка загрузки опроса' });
+    }
+});
+
+// Сохранение ответа без user_id, ФИО, логина и IP-адреса.
+app.post('/api/anonymous-surveys/:college/:token/responses', async (req, res) => {
+    try {
+        const tenant = await getTenantByCode(req.params.college);
+        if (!tenant) return res.status(404).json({ error: 'Опрос не найден' });
+        const db = tenantPool(tenant.db_name);
+        const [[campaign]] = await db.execute(
+            `SELECT id, survey_data
+             FROM anonymous_campaigns
+             WHERE access_token = ? AND is_active = TRUE
+               AND (closes_at IS NULL OR closes_at >= NOW())`,
+            [req.params.token]
+        );
+        if (!campaign) return res.status(404).json({ error: 'Опрос закрыт или ссылка недействительна' });
+        const survey = parseJsonValue(campaign.survey_data, null);
+        const answers = req.body && req.body.answers;
+        const validationError = survey ? validateAnonymousAnswers(survey, answers) : 'Повреждён снимок опроса';
+        if (validationError) return res.status(400).json({ error: validationError });
+
+        const cleanedAnswers = {};
+        for (const question of survey.questions) {
+            const dependency = question.showWhen;
+            const isVisible = !dependency || (
+                answers[dependency.questionId] != null &&
+                answers[dependency.questionId] !== dependency.notEquals
+            );
+            if (isVisible && answers[question.id] != null) {
+                cleanedAnswers[question.id] = answers[question.id];
+            }
+        }
+        await db.execute(
+            'INSERT INTO anonymous_responses (campaign_id, answers) VALUES (?, ?)',
+            [campaign.id, JSON.stringify(cleanedAnswers)]
+        );
+        res.status(201).json({ message: 'Анонимный ответ сохранён' });
+    } catch (error) {
+        console.error('Ошибка сохранения анонимного ответа:', error);
+        res.status(500).json({ error: 'Ошибка сохранения ответа' });
+    }
+});
+
+// ============================================
 // API РОУТЫ - ПОЛЬЗОВАТЕЛЬСКИЕ МЕТОДИКИ (БД)
 // ============================================
 
-// Список методик (любой авторизованный — нужно студентам для подсчёта по формуле)
-app.get('/api/methodologies', authenticateToken, async (req, res) => {
+// Список методик доступен только персоналу: формулы и ключи не раскрываются студентам.
+app.get('/api/methodologies', authenticateToken, requireStaff, async (req, res) => {
     try {
         const [rows] = await req.db.execute(
             'SELECT id, meth_key, title, data FROM methodologies WHERE is_active = TRUE ORDER BY title'
@@ -2080,7 +2402,7 @@ app.post('/api/platform/tenants', authenticateToken, requireSuperAdmin, async (r
             return res.status(400).json({ error: 'Колледж с таким кодом уже существует' });
         }
 
-        const dbName = safeDbName('psych_t_' + safeCode);
+        const dbName = safeDbName(TENANT_DB_PREFIX + safeCode);
 
         // 1. Создаём БД колледжа и накатываем схему.
         await adminPool.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
@@ -2135,6 +2457,64 @@ app.patch('/api/platform/tenants/:id', authenticateToken, requireSuperAdmin, asy
     } catch (error) {
         console.error('Ошибка обновления колледжа:', error);
         res.status(500).json({ error: 'Ошибка обновления колледжа' });
+    }
+});
+
+// Безвозвратное удаление колледжа вместе с его отдельной БД.
+app.delete('/api/platform/tenants/:id', authenticateToken, requireSuperAdmin, async (req, res) => {
+    const confirmationCode = String(req.body && req.body.confirmCode || '').trim();
+    const conn = await controlPool.getConnection();
+    let dbDropped = false;
+    try {
+        await conn.beginTransaction();
+        const [[tenant]] = await conn.execute(
+            'SELECT id, code, name, db_name FROM tenants WHERE id = ? FOR UPDATE',
+            [req.params.id]
+        );
+        if (!tenant) {
+            await conn.rollback();
+            return res.status(404).json({ error: 'Колледж не найден' });
+        }
+        if (tenant.code === 'default' || tenant.db_name === DEFAULT_DB_NAME) {
+            await conn.rollback();
+            return res.status(403).json({ error: 'Колледж по умолчанию защищён от удаления' });
+        }
+        if (confirmationCode !== tenant.code) {
+            await conn.rollback();
+            return res.status(400).json({ error: 'Для подтверждения введите точный код колледжа' });
+        }
+        const dbName = safeDbName(tenant.db_name);
+        if (
+            dbName !== tenant.db_name ||
+            !dbName.startsWith(TENANT_DB_PREFIX) ||
+            dbName === safeDbName(CONTROL_DB_NAME)
+        ) {
+            await conn.rollback();
+            return res.status(400).json({ error: 'Имя БД колледжа не прошло проверку безопасности' });
+        }
+
+        await conn.execute('DELETE FROM tenants WHERE id = ?', [tenant.id]);
+        const cachedPool = tenantPools.get(dbName);
+        if (cachedPool) {
+            tenantPools.delete(dbName);
+            await cachedPool.end();
+        }
+        await adminPool.query(`DROP DATABASE \`${dbName}\``);
+        dbDropped = true;
+        await conn.commit();
+        res.json({ message: `Колледж «${tenant.name}» и его БД удалены` });
+    } catch (error) {
+        try {
+            await conn.rollback();
+        } catch (_) {}
+        console.error('Ошибка удаления колледжа:', error);
+        res.status(500).json({
+            error: dbDropped
+                ? 'БД удалена, но реестр не обновлён. Требуется ручная проверка control-БД.'
+                : 'Ошибка удаления колледжа'
+        });
+    } finally {
+        conn.release();
     }
 });
 
@@ -2211,6 +2591,10 @@ app.get('/student', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'student.html'));
 });
 
+app.get('/survey/:college/:token', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'anonymous.html'));
+});
+
 app.get('/platform', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'platform.html'));
 });
@@ -2262,6 +2646,7 @@ module.exports = {
     startServer,
     initializeApplication,
     validateQuestionnaireAnswers,
+    validateAnonymousAnswers,
     fallbackQuestionnaireScore,
     deriveResultMetadata,
     validateDatabasePassword

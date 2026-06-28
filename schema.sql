@@ -128,6 +128,32 @@ CREATE TABLE audit_log (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
+-- Кампании анонимных анкет. Они намеренно не связаны со студентами.
+CREATE TABLE anonymous_campaigns (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    survey_key VARCHAR(80) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    survey_data JSON NOT NULL COMMENT 'Снимок вопросов и вариантов на момент запуска',
+    target_group VARCHAR(100),
+    access_token CHAR(64) UNIQUE NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    closes_at DATETIME NULL,
+    created_by INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_anonymous_campaigns_active (is_active, closes_at)
+);
+
+-- Обезличенные ответы: без user_id, ФИО, логина и IP-адреса.
+CREATE TABLE anonymous_responses (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    campaign_id INT NOT NULL,
+    answers JSON NOT NULL,
+    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (campaign_id) REFERENCES anonymous_campaigns(id) ON DELETE CASCADE,
+    INDEX idx_anonymous_responses_campaign (campaign_id, submitted_at)
+);
+
 -- Индексы для оптимизации
 CREATE INDEX idx_users_role ON users(role);
 CREATE INDEX idx_users_group ON users(group_name);

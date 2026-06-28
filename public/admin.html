@@ -47,6 +47,11 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="#" data-action="showSection" data-action-args='["anonymous"]' data-action-pass="element">
+                            <i class="bi bi-incognito me-1"></i><span data-i18n="nav.anonymous">Анонимные опросы</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="#" data-action="showSection" data-action-args='["results"]' data-action-pass="element">
                             <i class="bi bi-graph-up me-1"></i><span data-i18n="nav.results">Результаты</span>
                         </a>
@@ -333,6 +338,65 @@
             <div class="row g-3" id="methodologiesList"></div>
         </section>
 
+        <!-- Секция: Анонимные опросы -->
+        <section id="section-anonymous" class="p-4 d-none">
+            <div class="mb-4">
+                <h4 class="mb-1"><i class="bi bi-incognito me-2"></i><span data-i18n="anonymous.admin_title">Анонимные опросы</span></h4>
+                <p class="text-muted mb-0" data-i18n="anonymous.admin_hint">Ответы хранятся отдельно от студентов и не содержат персональных данных.</p>
+            </div>
+
+            <div class="row g-4">
+                <div class="col-lg-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h6 class="fw-bold mb-3" data-i18n="anonymous.new_campaign">Новый анонимный опрос</h6>
+                            <form id="anonymousCampaignForm">
+                                <div class="mb-3">
+                                    <label class="form-label" data-i18n="anonymous.template">Анкета</label>
+                                    <select class="form-select" id="anonymousTemplate" required>
+                                        <option value="" data-i18n="anonymous.choose_template">Выберите анкету…</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" data-i18n="anonymous.target_group">Группа или аудитория</label>
+                                    <input class="form-control" id="anonymousTargetGroup" maxlength="100" data-i18n-ph="anonymous.target_group_ph" placeholder="Например: ИТ-101">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" data-i18n="anonymous.closes_at">Принимать ответы до</label>
+                                    <input type="datetime-local" class="form-control" id="anonymousClosesAt">
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100" id="anonymousCreateButton">
+                                    <i class="bi bi-link-45deg me-1"></i><span data-i18n="anonymous.create_link">Создать ссылку</span>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-8">
+                    <div class="card h-100">
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th data-i18n="anonymous.survey">Опрос</th>
+                                            <th data-i18n="table.group">Группа</th>
+                                            <th data-i18n="anonymous.responses">Ответов</th>
+                                            <th data-i18n="anonymous.status">Статус</th>
+                                            <th data-i18n="common.actions">Действия</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="anonymousCampaignsBody">
+                                        <tr><td colspan="5" class="text-center py-4 text-muted" data-i18n="common.loading">Загрузка...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Секция: Результаты -->
         <section id="section-results" class="p-4 d-none">
             <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
@@ -496,7 +560,7 @@
                                     </div>
                                     <div class="col-md-6">
                                         <label class="form-label"><span data-i18n="field.password">Пароль</span> *</label>
-                                        <input type="password" class="form-control" name="password" required>
+                                        <input type="password" class="form-control" name="password" data-i18n-ph="students.default_password_hint" placeholder="Будет использован пароль колледжа по умолчанию">
                                     </div>
                                 </div>
                             </div>
@@ -633,8 +697,8 @@
                 <div class="modal-body" id="summaryReportBody"></div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Закрыть</button>
-                    <button type="button" class="btn btn-primary" data-action="printOpenSummaryReport">
-                        <i class="bi bi-printer me-1"></i><span data-i18n="report.print_summary">Печать отчёта</span>
+                    <button type="button" class="btn btn-primary" data-action="downloadOpenSummaryReport">
+                        <i class="bi bi-file-earmark-pdf me-1"></i><span data-i18n="report.download_summary">Скачать PDF</span>
                     </button>
                 </div>
             </div>
@@ -761,12 +825,28 @@
         </div>
     </div>
 
+    <!-- Модальное окно: агрегированный анонимный отчёт -->
+    <div class="modal fade" id="anonymousReportModal" tabindex="-1">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="anonymousReportTitle" data-i18n="anonymous.report_title">Результаты анонимного опроса</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="anonymousReportBody"></div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdfmake@0.2.12/build/pdfmake.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdfmake@0.2.12/build/vfs_fonts.js"></script>
     <script src="methodologies.js"></script>
     <script src="i18n.js"></script>
     <script src="common.js"></script>
+    <script src="pdf-download.js"></script>
     <script src="event-actions.js"></script>
     <script src="admin.js"></script>
 </body>

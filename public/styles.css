@@ -404,3 +404,24 @@ section {
     border-radius: var(--radius-sm);
     padding: 0.5rem 0.75rem;
 }
+/* Анонимные анкеты: спокойная одноколоночная форма без идентифицирующих полей. */
+.anonymous-survey-shell {
+    max-width: 820px;
+}
+
+.anonymous-option {
+    display: block;
+    cursor: pointer;
+    background: #fff;
+    transition: border-color .15s ease, background-color .15s ease;
+}
+
+.anonymous-option:hover {
+    border-color: var(--bs-primary) !important;
+    background: #f8faff;
+}
+
+.anonymous-option:has(input:checked) {
+    border-color: var(--bs-primary) !important;
+    background: #eef4ff;
+}

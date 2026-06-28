@@ -5,10 +5,12 @@ process.env.DB_PASSWORD = 'unit-test-db-password';
 process.env.SUPERADMIN_PASSWORD = 'unit-test-superadmin-password';
 const {
     validateQuestionnaireAnswers,
+    validateAnonymousAnswers,
     fallbackQuestionnaireScore,
     deriveResultMetadata,
     validateDatabasePassword
 } = require('../server');
+const { PSY_ANONYMOUS_SURVEYS } = require('../public/anonymous-surveys');
 
 const questions = [
     {
@@ -50,6 +52,17 @@ test('валидация принимает корректные ответы', 
         validateQuestionnaireAnswers(questions, { 0: 'Да', 1: ['A', 'B'], 2: 4 }),
         null
     );
+});
+
+test('анонимная анкета требует условный вопрос только при применимости', () => {
+    const survey = PSY_ANONYMOUS_SURVEYS.find(item => item.id === 'treatment-5-11');
+    const base = Object.fromEntries(survey.questions.map(question => [question.id, question.options[0]]));
+    delete base.q9;
+    base.q8 = 'Не сталкивался(-ась).';
+    assert.equal(validateAnonymousAnswers(survey, base), null);
+
+    base.q8 = survey.questions.find(question => question.id === 'q8').options[0];
+    assert.match(validateAnonymousAnswers(survey, base), /кто проявлял насилие/i);
 });
 
 test('резервный подсчёт суммирует веса одиночных и множественных ответов', () => {

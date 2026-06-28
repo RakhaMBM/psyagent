@@ -6,6 +6,7 @@ const bcrypt = require('bcryptjs');
 require('dotenv').config({ quiet: true });
 
 const { PSY_METHODOLOGIES } = require('../public/methodologies');
+const { PSY_ANONYMOUS_SURVEYS } = require('../public/anonymous-surveys');
 
 const projectRoot = path.resolve(__dirname, '..');
 const suffix = `${Date.now()}_${process.pid}`.replace(/\D/g, '');
@@ -19,6 +20,9 @@ const superadminPassword = 'IntegrationSuperadmin-2026';
 const adminPassword = 'IntegrationAdmin-2026';
 const studentPassword = 'IntegrationStudent-2026';
 const legacyAdminPassword = 'IntegrationLegacy-2026';
+const defaultStudentPassword = 'IntegrationDefaultStudent-2026';
+const disposableTenantCode = `itdel_${suffix}`.slice(0, 50);
+const disposableTenantDb = `psyagent_it_t_${disposableTenantCode}`;
 
 const dbConfig = {
     host: process.env.DB_HOST || '127.0.0.1',
@@ -63,7 +67,7 @@ async function request(pathname, options = {}, expectedStatus = 200) {
     return body;
 }
 
-async function waitForServer(timeoutMs = 20000) {
+async function waitForServer(timeoutMs = 60000) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         if (serverProcess.exitCode !== null) {
@@ -92,7 +96,9 @@ function startServer() {
             CONTROL_DB_NAME: controlDbName,
             JWT_SECRET: jwtSecret,
             SUPERADMIN_USER: 'integration_superadmin',
-            SUPERADMIN_PASSWORD: superadminPassword
+            SUPERADMIN_PASSWORD: superadminPassword,
+            DEFAULT_STUDENT_PASSWORD: defaultStudentPassword,
+            TENANT_DB_PREFIX: 'psyagent_it_t_'
         },
         stdio: ['ignore', 'pipe', 'pipe']
     });
@@ -252,11 +258,28 @@ async function verifyLegacyMigration() {
            AND REFERENCED_TABLE_NAME = 'assignments'`,
         [legacyDbName]
     );
+    const [anonymousTables] = await db.execute(
+        `SELECT TABLE_NAME
+         FROM information_schema.TABLES
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME IN ('anonymous_campaigns', 'anonymous_responses')`,
+        [legacyDbName]
+    );
+    const [anonymousColumns] = await db.execute(
+        `SELECT COLUMN_NAME
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'anonymous_responses'`,
+        [legacyDbName]
+    );
     assert.equal(userColumns.length, 1, 'миграция должна добавить users.token_version');
     assert.equal(questionnaireColumns.length, 1, 'миграция должна добавить questionnaires.methodology_data');
     assert.equal(resultColumns.length, 1, 'миграция должна добавить results.assignment_id');
     assert.ok(indexes.some(index => Number(index.Non_unique) === 0), 'assignment_id должен быть уникальным');
     assert.equal(foreignKeys.length, 1, 'results.assignment_id должен ссылаться на assignments');
+    assert.equal(anonymousTables.length, 2, 'миграция должна добавить таблицы анонимных опросов');
+    assert.ok(
+        anonymousColumns.every(column => !['user_id', 'ip_address', 'full_name', 'username'].includes(column.COLUMN_NAME)),
+        'обезличенные ответы не должны содержать идентификаторы респондента'
+    );
     await db.end();
 }
 
@@ -303,6 +326,34 @@ async function runScenario() {
     const tenants = await request('/api/platform/tenants', { token: superadminLogin.token });
     assert.equal(tenants.length, 2);
 
+    const disposableTenant = await request('/api/platform/tenants', {
+        method: 'POST',
+        token: superadminLogin.token,
+        body: {
+            code: disposableTenantCode,
+            name: 'Колледж для удаления',
+            adminUsername: 'delete_admin',
+            adminPassword,
+            adminFullName: 'Удаляемый администратор'
+        }
+    }, 201);
+    assert.equal(disposableTenant.db_name, disposableTenantDb);
+    const tenantsWithDisposable = await request('/api/platform/tenants', { token: superadminLogin.token });
+    const disposableTenantRow = tenantsWithDisposable.find(item => item.code === disposableTenantCode);
+    assert.ok(disposableTenantRow);
+    await request(`/api/platform/tenants/${disposableTenantRow.id}`, {
+        method: 'DELETE',
+        token: superadminLogin.token,
+        body: { confirmCode: 'wrong-code' }
+    }, 400);
+    await request(`/api/platform/tenants/${disposableTenantRow.id}`, {
+        method: 'DELETE',
+        token: superadminLogin.token,
+        body: { confirmCode: disposableTenantCode }
+    });
+    const [deletedDatabases] = await adminConnection.query('SHOW DATABASES LIKE ?', [disposableTenantDb]);
+    assert.equal(deletedDatabases.length, 0, 'удаление колледжа должно удалить отдельную БД');
+
     const student = await request('/api/students', {
         method: 'POST',
         token: adminToken,
@@ -318,6 +369,56 @@ async function runScenario() {
             home_address: 'Тестовый адрес'
         }
     }, 201);
+
+    const defaultPasswordStudent = await request('/api/students', {
+        method: 'POST',
+        token: adminToken,
+        body: {
+            username: 'default_password_student',
+            full_name: 'Студент с паролем по умолчанию',
+            birth_date: '2007-02-04',
+            group_name: 'ИТ-101',
+            family_type: 'full'
+        }
+    }, 201);
+    assert.ok(defaultPasswordStudent.userId);
+    const defaultPasswordLogin = await request('/api/auth/login', {
+        method: 'POST',
+        body: {
+            username: 'default_password_student',
+            password: defaultStudentPassword,
+            college: 'default'
+        }
+    });
+    assert.equal(defaultPasswordLogin.user.role, 'student');
+
+    const anonymousTemplate = PSY_ANONYMOUS_SURVEYS[0];
+    const anonymousCampaign = await request('/api/anonymous-campaigns', {
+        method: 'POST',
+        token: adminToken,
+        body: {
+            surveyKey: anonymousTemplate.id,
+            targetGroup: 'ИТ-101'
+        }
+    }, 201);
+    const anonymousPublic = await request(
+        anonymousCampaign.public_path.replace('/survey/', '/api/anonymous-surveys/')
+    );
+    assert.equal(anonymousPublic.survey.questions.length, 7);
+    const anonymousAnswers = Object.fromEntries(
+        anonymousTemplate.questions.map(question => [question.id, question.options[0]])
+    );
+    await request(
+        anonymousCampaign.public_path.replace('/survey/', '/api/anonymous-surveys/') + '/responses',
+        { method: 'POST', body: { answers: anonymousAnswers } },
+        201
+    );
+    const anonymousReport = await request(
+        `/api/anonymous-campaigns/${anonymousCampaign.id}/report`,
+        { token: adminToken }
+    );
+    assert.equal(anonymousReport.response_count, 1);
+    assert.equal(anonymousReport.questions[0].options[0].count, 1);
 
     const questionnaires = new Map();
     for (const methodology of PSY_METHODOLOGIES) {
@@ -354,6 +455,7 @@ async function runScenario() {
         body: { username: 'integration_student', password: studentPassword, college: 'default' }
     });
     const studentToken = studentLogin.token;
+    await request('/api/methodologies', { token: studentToken }, 403);
     const myTests = await request('/api/my-tests', { token: studentToken });
     assert.equal(myTests.length, 1);
     const assignmentId = myTests[0].assignment_id;
@@ -363,6 +465,16 @@ async function runScenario() {
         token: studentToken,
         body: { assignmentId }
     }, 201);
+    const studentQuestionnaire = await request(`/api/questionnaires/${questionnaireId}`, {
+        token: studentToken
+    });
+    assert.equal('methodology_data' in studentQuestionnaire, false);
+    assert.ok(
+        studentQuestionnaire.questions.every(question =>
+            question.options.every(option => typeof option === 'string')
+        ),
+        'студент должен получать варианты без весов'
+    );
     await request('/api/results/save', {
         method: 'POST',
         token: studentToken,
@@ -381,7 +493,7 @@ async function runScenario() {
         token: studentToken,
         body: { resultId: started.resultId, answers }
     });
-    assert.equal(Number(completed.score), 60);
+    assert.deepEqual(completed, { message: 'Тест завершён' });
     await request('/api/results/complete', {
         method: 'POST',
         token: studentToken,
@@ -428,7 +540,7 @@ async function runScenario() {
 async function cleanup() {
     await stopServer();
     if (!adminConnection) return;
-    for (const name of [controlDbName, legacyDbName, dbName]) {
+    for (const name of [disposableTenantDb, controlDbName, legacyDbName, dbName]) {
         try {
             await adminConnection.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(name)}`);
         } catch (error) {
@@ -448,5 +560,8 @@ async function cleanup() {
         process.exitCode = 1;
     } finally {
         await cleanup();
+        // Node fetch может удерживать keep-alive handles после остановки тестового сервера.
+        // Все БД и дочерний процесс уже закрыты, поэтому завершаем прогон детерминированно.
+        setImmediate(() => process.exit(process.exitCode || 0));
     }
 })();

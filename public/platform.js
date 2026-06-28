@@ -52,9 +52,12 @@ async function loadTenants() {
                 </td>
                 <td class="text-end">
                     ${t.code === 'default' ? '<span class="text-muted small">—</span>' :
-                        (t.is_active
-                            ? `<button class="btn btn-sm btn-outline-secondary" data-action="toggleTenant" data-action-args='[${t.id},false]'><i class="bi bi-pause-circle me-1"></i>Отключить</button>`
-                            : `<button class="btn btn-sm btn-outline-success" data-action="toggleTenant" data-action-args='[${t.id},true]'><i class="bi bi-play-circle me-1"></i>Включить</button>`)}
+                        `<div class="btn-group btn-group-sm">
+                            ${t.is_active ? '' : `<button class="btn btn-outline-success" data-action="toggleTenant" data-action-args='[${t.id},true]'><i class="bi bi-play-circle me-1"></i>Включить</button>`}
+                            <button class="btn btn-outline-danger" data-action="deleteTenant" data-action-args='[${t.id},"${esc(t.code)}"]'>
+                                <i class="bi bi-trash me-1"></i>Удалить
+                            </button>
+                        </div>`}
                 </td>
             </tr>`).join('');
     } catch (e) {
@@ -175,6 +178,35 @@ async function toggleTenant(id, makeActive) {
         loadTenants();
     } catch (err) {
         alert(err.message);
+    }
+}
+
+async function deleteTenant(id, code) {
+    const confirmation = prompt(
+        `Колледж и вся его база данных будут удалены безвозвратно.\n\nДля подтверждения введите код колледжа: ${code}`
+    );
+    if (confirmation == null) return;
+    if (confirmation.trim() !== code) {
+        alert('Код не совпадает. Удаление отменено.');
+        return;
+    }
+    if (!confirm(`Окончательно удалить колледж «${code}» и все его данные?`)) return;
+
+    try {
+        const res = await fetch('/api/platform/tenants/' + id, {
+            method: 'DELETE',
+            headers: authHeaders,
+            body: JSON.stringify({ confirmCode: confirmation.trim() })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Ошибка удаления');
+        platformUsersCache = [];
+        document.getElementById('supportUsers').innerHTML =
+            '<tr><td colspan="5" class="text-center text-muted py-3">Выберите колледж</td></tr>';
+        alert(data.message);
+        loadTenants();
+    } catch (error) {
+        alert(error.message);
     }
 }
 

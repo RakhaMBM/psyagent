@@ -7,7 +7,8 @@
     "start": "node server.js",
     "test": "node test/run.js",
     "test:integration": "node test/integration-mysql.js",
-    "create-admin": "node scripts/create-admin.js"
+    "create-admin": "node scripts/create-admin.js",
+    "reset-student-passwords": "node scripts/reset-student-passwords.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

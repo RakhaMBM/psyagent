@@ -3,7 +3,6 @@ let currentUser = JSON.parse(localStorage.getItem('user'));
 const esc = window.escapeHtml;
 let currentResultId = null;
 let currentQuestionnaireId = null;
-let currentMethodology = null;
 let myTestsCache = [];
 
 if (!token || currentUser?.role !== 'student') {
@@ -13,16 +12,6 @@ if (!token || currentUser?.role !== 'student') {
 window.onLangChange = function () {
     loadUserInfo();
 };
-
-// Подгружаем пользовательские методики из БД, чтобы корректно считать
-// балл и интерпретацию для тестов, созданных психологом.
-async function loadCustomMethodologies() {
-    try {
-        const res = await fetch('/api/methodologies', { headers: { 'Authorization': `Bearer ${token}` } });
-        const raw = await res.json();
-        if (window.registerMethodologies) window.registerMethodologies(Array.isArray(raw) ? raw : []);
-    } catch (e) { /* без пользовательских методик — работают встроенные */ }
-}
 
 async function loadUserInfo() {
     try {
@@ -182,7 +171,6 @@ async function startTest(assignmentId, questionnaireId) {
     const assignedTest = myTestsCache.find(item => item.assignment_id === assignmentId);
     const title = assignedTest ? assignedTest.title : '';
     currentQuestionnaireId = questionnaireId;
-    currentMethodology = window.findMethodologyByTitle ? window.findMethodologyByTitle(title) : null;
     document.getElementById('testTitle').textContent = title;
 
     try {
@@ -204,15 +192,8 @@ async function startTest(assignmentId, questionnaireId) {
         });
         const questionnaire = await qRes.json();
         if (!qRes.ok) throw new Error(questionnaire.error || t('msg.test_load_error'));
-        if (questionnaire.methodology_data) {
-            try {
-                currentMethodology = typeof questionnaire.methodology_data === 'string'
-                    ? JSON.parse(questionnaire.methodology_data)
-                    : questionnaire.methodology_data;
-            } catch (_) {}
-        }
 
-        renderQuestions(questionnaire.questions);
+        renderQuestions(questionnaire.questions, questionnaire.instruction);
         applyAnswers(startData.answers || {});
         new bootstrap.Modal(document.getElementById('testModal')).show();
 
@@ -221,15 +202,15 @@ async function startTest(assignmentId, questionnaireId) {
     }
 }
 
-function renderQuestions(questions) {
+function renderQuestions(questions, instruction = '') {
     const questionsArray = Array.isArray(questions) ? questions : [];
 
     const container = document.getElementById('testQuestions');
 
     const optLabel = (opt) => (opt && typeof opt === 'object') ? opt.text : opt;
 
-    const instructionHtml = (currentMethodology && currentMethodology.instruction)
-        ? `<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>${esc(currentMethodology.instruction)}</div>`
+    const instructionHtml = instruction
+        ? `<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>${esc(instruction)}</div>`
         : '';
 
     container.innerHTML = instructionHtml + questionsArray.map((q, idx) => {
@@ -408,25 +389,7 @@ async function completeTest() {
 
         bootstrap.Modal.getInstance(document.getElementById('testModal')).hide();
         loadMyTests();
-
-        let resultBlock;
-        if (currentMethodology && window.scoreMethodology) {
-            // Полный подсчёт по шкалам (учитывает подшкалы и обратные вопросы)
-            const sc = window.scoreMethodology(currentMethodology, answers);
-            resultBlock = sc.scales.filter(s => s.display !== false).map(s => {
-                const max = s.maxScore != null ? ' / ' + s.maxScore : '';
-                const interp = s.interp ? ' — ' + s.interp.label : '';
-                return `${s.name}: ${s.raw}${max}${interp}`;
-            }).join('\n');
-            const failed = sc.validity.filter(v => v.failed);
-            if (failed.length) {
-                resultBlock += '\n\n⚠ ' + failed.map(v => v.warning || v.name).join('; ');
-            }
-        } else {
-            resultBlock = t('msg.your_result') + ': ' + data.score;
-        }
-
-        alert('✅ ' + t('msg.test_finished') + '\n\n' + resultBlock + '\n\n' + t('msg.thanks'));
+        alert('✅ ' + t('msg.test_finished') + '\n\n' + t('msg.results_hidden') + '\n\n' + t('msg.thanks'));
     } catch (e) {
         alert(t('msg.error') + ': ' + e.message);
     }
@@ -438,4 +401,4 @@ function logout() {
     window.location.href = '/';
 }
 
-loadCustomMethodologies().then(loadUserInfo);
+loadUserInfo();

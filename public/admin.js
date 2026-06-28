@@ -31,6 +31,7 @@ loadStudents();
 loadTests();
 loadTestsForFilter();
 loadCustomMethodologies();
+loadAnonymousTemplates();
 
 // Перерисовка динамических частей при смене языка
 window.onLangChange = function () {
@@ -39,6 +40,7 @@ window.onLangChange = function () {
     loadTests();
     loadResults();
     loadMethodologiesList();
+    loadAnonymousCampaigns();
 };
 
 function showSection(sectionName, trigger) {
@@ -52,6 +54,199 @@ function showSection(sectionName, trigger) {
     if (sectionName === 'results') loadResults();
     if (sectionName === 'methodologies') loadMethodologiesList();
     if (sectionName === 'curators') loadCurators();
+    if (sectionName === 'anonymous') loadAnonymousCampaigns();
+}
+
+// ===== Анонимные опросы =====
+let anonymousCampaignsCache = [];
+
+async function loadAnonymousTemplates() {
+    const select = document.getElementById('anonymousTemplate');
+    if (!select) return;
+    try {
+        const response = await fetch('/api/anonymous-campaigns/templates', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const templates = await response.json();
+        if (!response.ok) throw new Error(templates.error || t('msg.error'));
+        const previous = select.value;
+        select.innerHTML = `<option value="">${t('anonymous.choose_template')}</option>` +
+            templates.map(template =>
+                `<option value="${esc(template.id)}">${esc(template.title)} · ${template.questionsCount} ${t('tests.q_count')}</option>`
+            ).join('');
+        select.value = previous;
+    } catch (error) {
+        select.innerHTML = `<option value="">${t('anonymous.load_error')}</option>`;
+    }
+}
+
+async function loadAnonymousCampaigns() {
+    const body = document.getElementById('anonymousCampaignsBody');
+    if (!body) return;
+    try {
+        const response = await fetch('/api/anonymous-campaigns', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const campaigns = await response.json();
+        if (!response.ok) throw new Error(campaigns.error || t('msg.error'));
+        anonymousCampaignsCache = Array.isArray(campaigns) ? campaigns : [];
+        if (!anonymousCampaignsCache.length) {
+            body.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-muted">${t('anonymous.empty')}</td></tr>`;
+            return;
+        }
+        body.innerHTML = anonymousCampaignsCache.map(campaign => {
+            const closedByDate = campaign.closes_at && new Date(campaign.closes_at) < new Date();
+            const active = Boolean(campaign.is_active) && !closedByDate;
+            return `
+                <tr>
+                    <td>
+                        <div class="fw-semibold">${esc(campaign.title)}</div>
+                        <small class="text-muted">${formatDateTime(campaign.created_at)}</small>
+                    </td>
+                    <td>${esc(campaign.target_group || '—')}</td>
+                    <td><span class="badge bg-primary">${Number(campaign.response_count) || 0}</span></td>
+                    <td>${active
+                        ? `<span class="badge bg-success">${t('anonymous.active')}</span>`
+                        : `<span class="badge bg-secondary">${t('anonymous.closed')}</span>`}</td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-primary" data-action="copyAnonymousLink" data-action-args='[${campaign.id}]' title="${t('anonymous.copy_link')}">
+                                <i class="bi bi-copy"></i>
+                            </button>
+                            <button class="btn btn-outline-info" data-action="viewAnonymousReport" data-action-args='[${campaign.id}]' title="${t('anonymous.view_report')}">
+                                <i class="bi bi-bar-chart"></i>
+                            </button>
+                            <button class="btn btn-outline-secondary" data-action="toggleAnonymousCampaign" data-action-args='[${campaign.id},${active ? 'false' : 'true'}]' title="${active ? t('anonymous.close') : t('anonymous.reopen')}">
+                                <i class="bi ${active ? 'bi-stop-circle' : 'bi-play-circle'}"></i>
+                            </button>
+                            <button class="btn btn-outline-danger" data-action="deleteAnonymousCampaign" data-action-args='[${campaign.id}]' title="${t('common.delete')}">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>`;
+        }).join('');
+    } catch (error) {
+        body.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-danger">${esc(error.message)}</td></tr>`;
+    }
+}
+
+document.getElementById('anonymousCampaignForm')?.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    const button = document.getElementById('anonymousCreateButton');
+    button.disabled = true;
+    try {
+        const response = await fetch('/api/anonymous-campaigns', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                surveyKey: document.getElementById('anonymousTemplate').value,
+                targetGroup: document.getElementById('anonymousTargetGroup').value.trim(),
+                closesAt: document.getElementById('anonymousClosesAt').value || null
+            })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || t('msg.error'));
+        this.reset();
+        await loadAnonymousCampaigns();
+        const url = new URL(data.public_path, window.location.origin).href;
+        try {
+            await navigator.clipboard.writeText(url);
+            alert(t('anonymous.created_copied'));
+        } catch (_) {
+            prompt(t('anonymous.copy_prompt'), url);
+        }
+    } catch (error) {
+        alert(`${t('msg.error')}: ${error.message}`);
+    } finally {
+        button.disabled = false;
+    }
+});
+
+async function copyAnonymousLink(id) {
+    const campaign = anonymousCampaignsCache.find(item => item.id === id);
+    if (!campaign) return;
+    const url = new URL(campaign.public_path, window.location.origin).href;
+    try {
+        await navigator.clipboard.writeText(url);
+        alert(t('anonymous.link_copied'));
+    } catch (_) {
+        prompt(t('anonymous.copy_prompt'), url);
+    }
+}
+
+async function toggleAnonymousCampaign(id, isActive) {
+    if (!confirm(isActive ? t('anonymous.confirm_reopen') : t('anonymous.confirm_close'))) return;
+    try {
+        const response = await fetch(`/api/anonymous-campaigns/${id}`, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ is_active: isActive })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || t('msg.error'));
+        loadAnonymousCampaigns();
+    } catch (error) {
+        alert(`${t('msg.error')}: ${error.message}`);
+    }
+}
+
+async function deleteAnonymousCampaign(id) {
+    if (!confirm(t('anonymous.confirm_delete'))) return;
+    try {
+        const response = await fetch(`/api/anonymous-campaigns/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || t('msg.error'));
+        loadAnonymousCampaigns();
+    } catch (error) {
+        alert(`${t('msg.error')}: ${error.message}`);
+    }
+}
+
+async function viewAnonymousReport(id) {
+    try {
+        const response = await fetch(`/api/anonymous-campaigns/${id}/report`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const report = await response.json();
+        if (!response.ok) throw new Error(report.error || t('msg.error'));
+        document.getElementById('anonymousReportTitle').textContent = report.campaign.title;
+        document.getElementById('anonymousReportBody').innerHTML = `
+            <div class="row g-3 mb-4">
+                <div class="col-md-4"><div class="stat-card stat-card-primary"><div class="stat-icon"><i class="bi bi-chat-square-check"></i></div><div class="stat-info"><h3>${report.response_count}</h3><p>${t('anonymous.responses')}</p></div></div></div>
+                <div class="col-md-8"><div class="alert alert-success mb-0"><i class="bi bi-incognito me-2"></i>${t('anonymous.aggregate_only')}</div></div>
+            </div>
+            ${report.questions.map((question, index) => `
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h6>${index + 1}. ${esc(question.text)}</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0">
+                                <tbody>${question.options.map(option => `
+                                    <tr>
+                                        <td>${esc(option.text)}</td>
+                                        <td class="text-end text-nowrap">${option.count} (${option.percent}%)</td>
+                                    </tr>`).join('')}
+                                    ${question.skipped ? `<tr class="text-muted"><td>${t('anonymous.skipped')}</td><td class="text-end">${question.skipped}</td></tr>` : ''}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>`).join('')}
+        `;
+        new bootstrap.Modal(document.getElementById('anonymousReportModal')).show();
+    } catch (error) {
+        alert(`${t('msg.error')}: ${error.message}`);
+    }
 }
 
 // ===== Кураторы =====
@@ -487,7 +682,7 @@ function renderRiskGroup(results) {
             <td>
                 <div class="btn-group btn-group-sm">
                     <button class="btn btn-outline-info" data-action="viewResult" data-action-args='[${r.id}]' title="${t('tests.view')}"><i class="bi bi-eye"></i></button>
-                    <button class="btn btn-outline-secondary" data-action="printStudentReport" data-action-args='[${r.user_id}]' title="${t('report.print')}"><i class="bi bi-printer"></i></button>
+                    <button class="btn btn-outline-secondary" data-action="downloadStudentReport" data-action-args='[${r.user_id}]' title="${t('report.download')}"><i class="bi bi-file-earmark-pdf"></i></button>
                 </div>
             </td>
         </tr>
@@ -548,8 +743,8 @@ async function loadStudents() {
                 <td>${esc(s.school || '-')}</td>
                 <td>
                     <div class="btn-group btn-group-sm">
-                        <button class="btn btn-outline-secondary" data-action="printStudentReport" data-action-args='[${s.id}]' title="${t('report.print')}">
-                            <i class="bi bi-printer"></i>
+                        <button class="btn btn-outline-secondary" data-action="downloadStudentReport" data-action-args='[${s.id}]' title="${t('report.download')}">
+                            <i class="bi bi-file-earmark-pdf"></i>
                         </button>
                         <button class="btn btn-outline-primary" data-action="editStudent" data-action-args='[${s.id}]' title="${t('common.edit')}">
                             <i class="bi bi-pencil"></i>
@@ -590,7 +785,7 @@ async function openStudentModal(studentId = null) {
     } else {
         cred.classList.remove('d-none');
         usernameInput.required = true;
-        passwordInput.required = true;
+        passwordInput.required = false;
     }
 
     new bootstrap.Modal(document.getElementById('studentModal')).show();
@@ -1531,8 +1726,8 @@ async function viewResult(resultId) {
         body.innerHTML = `
             <div class="d-flex justify-content-between align-items-start">
                 <h5>${esc(result.full_name)}</h5>
-                <button class="btn btn-sm btn-outline-secondary" data-action="printResultReport" data-action-args='[${result.id}]'>
-                    <i class="bi bi-printer me-1"></i>${t('report.print')}
+                <button class="btn btn-sm btn-outline-secondary" data-action="downloadResultReport" data-action-args='[${result.id}]'>
+                    <i class="bi bi-file-earmark-pdf me-1"></i>${t('report.download')}
                 </button>
             </div>
             ${summaryHtml}
@@ -1555,85 +1750,99 @@ async function viewResult(resultId) {
     } catch (e) {}
 }
 
-// ========== ПЕЧАТНЫЕ ЗАКЛЮЧЕНИЯ (печать браузера → «Сохранить как PDF») ==========
+// ========== PDF-ЗАКЛЮЧЕНИЯ ==========
 function reportFamilyLabel(ft) {
     const map = { full: 'family.full', single_parent: 'family.single_parent', guardian: 'family.guardian', other: 'family.other' };
     return map[ft] ? t(map[ft]) : '—';
 }
 
-// Разбивка одного результата по шкалам (или сырой балл для не-методик)
-function reportResultBody(r) {
-    const m = methodologyForResult(r);
-    if (m && window.scoreMethodology) {
-        const sc = window.scoreMethodology(m, r.answers || {});
-        const warns = sc.validity.filter(v => v.failed)
-            .map(v => `<p class="warn">⚠ ${esc(v.warning || v.name)} (${v.value})</p>`).join('');
-        const rows = sc.scales.filter(s => s.display !== false).map(s => `
-            <tr><td>${esc(s.name)}</td>
-                <td>${s.raw}${s.maxScore != null ? ' / ' + s.maxScore : ''}</td>
-                <td>${s.interp ? esc(s.interp.label) : '—'}</td></tr>`).join('');
-        return `${warns}
-            <table class="scales">
-                <thead><tr><th>${t('rmodal.scale')}</th><th>${t('table.score')}</th><th>${t('rmodal.interpretation')}</th></tr></thead>
-                <tbody>${rows}</tbody>
-            </table>`;
-    }
-    return `<p>${t('table.score')}: <strong>${r.score}</strong></p>`;
-}
+function buildStudentPdfDefinition(student, results) {
+    const content = [
+        { text: t('report.title'), style: 'title' },
+        {
+            text: new Date().toLocaleDateString(getLang() === 'kz' ? 'kk-KZ' : 'ru-RU'),
+            style: 'date'
+        },
+        window.PsyPdf.keyValueTable(
+            [
+                [t('table.fio'), student.full_name || '—'],
+                [t('table.group'), student.group_name || '—'],
+                [
+                    t('table.birth_date'),
+                    `${student.birth_date ? formatDate(student.birth_date) : '—'}${student.age != null ? ` (${student.age} ${t('unit.years')})` : ''}`
+                ],
+                [t('field.school'), student.school || '—'],
+                [t('field.family_type'), reportFamilyLabel(student.family_type)],
+                [t('field.lives_with'), student.lives_with || '—']
+            ]
+        ),
+        { text: t('report.results'), style: 'section' }
+    ];
 
-// Динамика по тесту: последовательность баллов главной шкалы во времени
-function reportDynamics(group) {
-    if (group.length < 2) return '';
-    const seq = group.map(r => {
-        const m = methodologyForResult(r);
-        const sc = (m && window.scoreMethodology) ? window.scoreMethodology(m, r.answers || {}) : null;
-        return sc && sc.primary ? sc.primary.raw : r.score;
+    const byTest = new Map();
+    results.forEach(result => {
+        const title = result.questionnaire_title || '—';
+        if (!byTest.has(title)) byTest.set(title, []);
+        byTest.get(title).push(result);
     });
-    return `<p class="meta"><strong>${t('report.dynamics')}:</strong> ${seq.join(' → ')}</p>`;
-}
 
-function buildStudentReport(student, results) {
-    const date = new Date().toLocaleDateString(getLang() === 'kz' ? 'kk-KZ' : 'ru-RU');
+    if (!results.length) {
+        content.push({ text: t('report.no_results'), color: '#667085' });
+    }
 
-    // Группируем по тесту, внутри группы — по дате (от старых к новым) для динамики
-    const byTest = Object.create(null);
-    results.forEach(r => { (byTest[r.questionnaire_title] = byTest[r.questionnaire_title] || []).push(r); });
-    Object.values(byTest).forEach(g => g.sort((a, b) => new Date(a.completed_at || 0) - new Date(b.completed_at || 0)));
+    for (const [title, group] of byTest.entries()) {
+        group.sort((a, b) => new Date(a.completed_at || 0) - new Date(b.completed_at || 0));
+        content.push({ text: title, style: 'subsection' });
+        if (group.length > 1) {
+            const dynamics = group.map(result => {
+                const methodology = methodologyForResult(result);
+                const scored = methodology && window.scoreMethodology
+                    ? window.scoreMethodology(methodology, result.answers || {})
+                    : null;
+                return scored && scored.primary ? scored.primary.raw : result.score;
+            });
+            content.push({ text: `${t('report.dynamics')}: ${dynamics.join(' → ')}`, style: 'meta' });
+        }
+        for (const result of group) {
+            content.push({ text: `${t('table.date')}: ${formatDateTime(result.completed_at)}`, style: 'meta' });
+            const methodology = methodologyForResult(result);
+            const scored = methodology && window.scoreMethodology
+                ? window.scoreMethodology(methodology, result.answers || {})
+                : null;
+            if (!scored) {
+                content.push({ text: `${t('table.score')}: ${result.score}`, margin: [0, 0, 0, 5] });
+                continue;
+            }
+            scored.validity.filter(item => item.failed).forEach(item => {
+                content.push({
+                    text: `⚠ ${item.warning || item.name} (${item.value})`,
+                    style: 'warning'
+                });
+            });
+            content.push(window.PsyPdf.table(
+                [t('rmodal.scale'), t('table.score'), t('rmodal.interpretation')],
+                scored.scales.filter(scale => scale.display !== false).map(scale => [
+                    scale.name,
+                    `${scale.raw}${scale.maxScore != null ? ` / ${scale.maxScore}` : ''}`,
+                    scale.interp ? scale.interp.label : '—'
+                ]),
+                ['42%', '18%', '40%']
+            ));
+        }
+    }
 
-    const resultsHtml = results.length
-        ? Object.keys(byTest).map(testTitle => {
-            const group = byTest[testTitle];
-            return `
-                <div class="result">
-                    <h3>${esc(testTitle)}</h3>
-                    ${reportDynamics(group)}
-                    ${group.map(r => `
-                        <div class="run">
-                            <p class="meta">${t('table.date')}: ${formatDateTime(r.completed_at)}</p>
-                            ${reportResultBody(r)}
-                        </div>`).join('')}
-                </div>`;
-        }).join('')
-        : `<p class="muted">${t('report.no_results')}</p>`;
-    return `
-        <h1>${t('report.title')}</h1>
-        <p class="date">${date}</p>
-        <table class="info">
-            <tr><td>${t('table.fio')}</td><td>${esc(student.full_name || '—')}</td></tr>
-            <tr><td>${t('table.group')}</td><td>${esc(student.group_name || '—')}</td></tr>
-            <tr><td>${t('table.birth_date')}</td><td>${student.birth_date ? formatDate(student.birth_date) : '—'}${student.age != null ? ' (' + student.age + ' ' + t('unit.years') + ')' : ''}</td></tr>
-            <tr><td>${t('field.school')}</td><td>${esc(student.school || '—')}</td></tr>
-            <tr><td>${t('field.family_type')}</td><td>${reportFamilyLabel(student.family_type)}</td></tr>
-            <tr><td>${t('field.lives_with')}</td><td>${esc(student.lives_with || '—')}</td></tr>
-        </table>
-        <h2>${t('report.results')}</h2>
-        ${resultsHtml}
-        <div class="notes"><strong>${t('report.notes')}:</strong><div class="line"></div><div class="line"></div></div>
-        <div class="sign">${t('report.psychologist')}: ____________________ / ${esc(currentUser.fullName || '')}</div>
-    `;
+    content.push(
+        { text: `${t('report.notes')}: ________________________________________________`, margin: [0, 18, 0, 8] },
+        {
+            text: `${t('report.psychologist')}: ____________________ / ${currentUser.fullName || ''}`,
+            style: 'signature'
+        }
+    );
+    return window.PsyPdf.baseDefinition(content, { title: t('report.title') });
 }
 
 let summaryReportHtml = '';
+let summaryReportData = null;
 
 function riskInfoForResult(result) {
     if (typeof result.at_risk === 'boolean') {
@@ -1779,6 +1988,133 @@ function buildSummaryReport(scope, students, results, groupName) {
     `;
 }
 
+function buildSummaryPdfDefinition(scope, students, results, groupName) {
+    const title = scope === 'group'
+        ? `${t('report.group_title')}: ${groupName}`
+        : t('report.college_title');
+    const diagnosed = countUniqueStudents(results);
+    const riskStudents = countRiskStudents(results);
+    const coverage = students.length ? Math.round(diagnosed * 100 / students.length) : 0;
+    const filterHolder = document.createElement('textarea');
+    filterHolder.innerHTML = summaryFilterDescription(scope, groupName);
+
+    const content = [
+        { text: title, style: 'title' },
+        {
+            text: new Date().toLocaleDateString(getLang() === 'kz' ? 'kk-KZ' : 'ru-RU'),
+            style: 'date'
+        },
+        { text: filterHolder.value, style: 'meta' },
+        window.PsyPdf.keyValueTable(
+            [
+                [t('table.students'), students.length],
+                [t('report.diagnosed'), `${diagnosed} (${coverage}%)`],
+                [t('res.total'), results.length],
+                [t('risk.title'), riskStudents]
+            ],
+            ['45%', '55%']
+        ),
+        { text: t('report.by_tests'), style: 'section' }
+    ];
+
+    const byTest = new Map();
+    results.forEach(result => {
+        const key = result.questionnaire_title || '—';
+        if (!byTest.has(key)) byTest.set(key, []);
+        byTest.get(key).push(result);
+    });
+    const testRows = [...byTest.entries()].map(([testTitle, testResults]) => {
+        const levels = new Map();
+        testResults.forEach(result => {
+            const label = summaryLevelForResult(result);
+            levels.set(label, (levels.get(label) || 0) + 1);
+        });
+        const unique = countUniqueStudents(testResults);
+        return [
+            testTitle,
+            unique,
+            testResults.length,
+            `${students.length ? Math.round(unique * 100 / students.length) : 0}%`,
+            [...levels.entries()].map(([label, count]) => `${label}: ${count}`).join('\n') || '—',
+            countRiskStudents(testResults)
+        ];
+    });
+    content.push(window.PsyPdf.table(
+        [t('table.test'), t('report.diagnosed'), t('res.total'), t('report.coverage'), t('res.chart_levels'), t('risk.title')],
+        testRows.length ? testRows : [[t('report.no_results'), '', '', '', '', '']],
+        ['26%', '11%', '10%', '10%', '31%', '12%']
+    ));
+
+    if (scope === 'college') {
+        content.push({ text: t('report.by_groups'), style: 'section' });
+        const groups = [...new Set(students.map(student => student.group_name || '—'))].sort();
+        content.push(window.PsyPdf.table(
+            [t('table.group'), t('table.students'), t('report.diagnosed'), t('res.total'), t('risk.title')],
+            groups.map(group => {
+                const groupStudents = students.filter(student => (student.group_name || '—') === group);
+                const groupResults = results.filter(result => (result.group_name || '—') === group);
+                return [group, groupStudents.length, countUniqueStudents(groupResults), groupResults.length, countRiskStudents(groupResults)];
+            }),
+            ['28%', '18%', '18%', '18%', '18%']
+        ));
+    } else {
+        content.push({ text: t('report.students_list'), style: 'section' });
+        content.push(window.PsyPdf.table(
+            [t('table.student'), t('res.total'), t('table.date'), t('risk.title')],
+            students.slice().sort((a, b) => String(a.full_name).localeCompare(String(b.full_name))).map(student => {
+                const studentResults = results.filter(result => result.user_id === student.id);
+                const latest = studentResults.reduce((value, result) => {
+                    const timestamp = new Date(result.completed_at || 0).getTime();
+                    return timestamp > value ? timestamp : value;
+                }, 0);
+                const reasons = [...new Set(studentResults.flatMap(result =>
+                    riskInfoForResult(result).reasons.map(reason => reason.label)
+                ))];
+                return [
+                    student.full_name,
+                    studentResults.length,
+                    latest ? formatDateTime(new Date(latest).toISOString()) : '—',
+                    reasons.join('; ') || '—'
+                ];
+            }),
+            ['32%', '12%', '20%', '36%']
+        ));
+    }
+
+    const riskByStudent = new Map();
+    results.forEach(result => {
+        const risk = riskInfoForResult(result);
+        if (!risk.atRisk) return;
+        const current = riskByStudent.get(result.user_id) || {
+            name: result.full_name,
+            group: result.group_name,
+            reasons: new Set()
+        };
+        risk.reasons.forEach(reason => current.reasons.add(reason.label));
+        riskByStudent.set(result.user_id, current);
+    });
+    content.push({ text: t('risk.title'), style: 'section' });
+    content.push(window.PsyPdf.table(
+        [t('table.student'), t('table.group'), t('risk.reason')],
+        riskByStudent.size
+            ? [...riskByStudent.values()].map(item => [item.name, item.group || '—', [...item.reasons].join('; ')])
+            : [[t('risk.empty'), '', '']],
+        ['34%', '18%', '48%']
+    ));
+    content.push(
+        { text: `${t('report.notes')}: ________________________________________________`, margin: [0, 18, 0, 8] },
+        {
+            text: `${t('report.psychologist')}: ____________________ / ${currentUser.fullName || ''}`,
+            style: 'signature'
+        }
+    );
+
+    return window.PsyPdf.baseDefinition(content, {
+        title,
+        landscape: true
+    });
+}
+
 async function openSummaryReport(scope) {
     const groupName = document.getElementById('resultGroup')?.value || '';
     if (scope === 'group' && !groupName) {
@@ -1799,6 +2135,12 @@ async function openSummaryReport(scope) {
         const students = (Array.isArray(allStudents) ? allStudents : [])
             .filter(student => scope !== 'group' || student.group_name === groupName)
             .filter(student => !studentSearch || String(student.full_name || '').toLocaleLowerCase().includes(studentSearch));
+        summaryReportData = {
+            scope,
+            students,
+            results: Array.isArray(results) ? results : [],
+            groupName
+        };
         summaryReportHtml = buildSummaryReport(scope, students, Array.isArray(results) ? results : [], groupName);
         document.getElementById('summaryReportTitle').textContent = scope === 'group'
             ? `${t('report.group_title')}: ${groupName}`
@@ -1810,42 +2152,23 @@ async function openSummaryReport(scope) {
     }
 }
 
-function printOpenSummaryReport() {
-    if (summaryReportHtml) printReportHtml(summaryReportHtml);
+function downloadOpenSummaryReport() {
+    if (!summaryReportData) return;
+    try {
+        const { scope, students, results, groupName } = summaryReportData;
+        const filename = scope === 'group'
+            ? `${t('report.group_title')}-${groupName}-${new Date().toISOString().slice(0, 10)}`
+            : `${t('report.college_title')}-${new Date().toISOString().slice(0, 10)}`;
+        window.PsyPdf.download(
+            buildSummaryPdfDefinition(scope, students, results, groupName),
+            filename
+        );
+    } catch (error) {
+        alert(`${t('msg.error')}: ${error.message}`);
+    }
 }
 
-function printReportHtml(inner) {
-    const w = window.open('', '_blank');
-    if (!w) { alert(t('report.popup_blocked')); return; }
-    w.document.write(`<!DOCTYPE html><html lang="${getLang()}"><head><meta charset="utf-8"><title>${t('report.title')}</title>
-        <style>
-            @page { margin: 18mm; }
-            body { font-family: 'Times New Roman', Georgia, serif; color:#000; font-size:13px; line-height:1.5; }
-            h1 { font-size:18px; text-align:center; margin:0 0 4px; }
-            h2 { font-size:15px; border-bottom:1px solid #000; padding-bottom:2px; margin-top:18px; }
-            h3 { font-size:14px; margin:10px 0 4px; }
-            .date { text-align:center; color:#555; margin:0 0 16px; }
-            .meta { color:#555; margin:0 0 4px; font-size:12px; }
-            table { width:100%; border-collapse:collapse; margin:6px 0; }
-            table.info td { padding:3px 6px; border:1px solid #999; vertical-align:top; }
-            table.info td:first-child { width:35%; font-weight:bold; background:#f3f3f3; }
-            table.scales th, table.scales td { border:1px solid #999; padding:4px 6px; text-align:left; }
-            table.scales th { background:#f3f3f3; }
-            table.report-table th, table.report-table td { border:1px solid #999; padding:4px 6px; text-align:left; vertical-align:top; }
-            table.report-table th { background:#f3f3f3; }
-            .result { page-break-inside: avoid; margin-bottom:10px; }
-            .warn { color:#b00; font-weight:bold; margin:4px 0; }
-            .muted { color:#777; }
-            .notes { margin-top:22px; }
-            .notes .line { border-bottom:1px solid #999; height:22px; }
-            .sign { margin-top:28px; }
-        </style></head><body>${inner}</body></html>`);
-    w.document.close();
-    w.focus();
-    setTimeout(() => { try { w.print(); } catch (e) {} }, 350);
-}
-
-async function printStudentReport(studentId) {
+async function downloadStudentReport(studentId) {
     try {
         const [sRes, rRes] = await Promise.all([
             fetch('/api/students', { headers: { 'Authorization': `Bearer ${token}` } }),
@@ -1856,13 +2179,16 @@ async function printStudentReport(studentId) {
         const student = (Array.isArray(students) ? students : []).find(s => s.id === studentId);
         if (!student) return;
         const userResults = (Array.isArray(results) ? results : []).filter(r => r.user_id === studentId);
-        printReportHtml(buildStudentReport(student, userResults));
+        window.PsyPdf.download(
+            buildStudentPdfDefinition(student, userResults),
+            `${t('report.title')}-${student.full_name}-${new Date().toISOString().slice(0, 10)}`
+        );
     } catch (e) {
         alert(t('msg.error') + ': ' + e.message);
     }
 }
 
-async function printResultReport(resultId) {
+async function downloadResultReport(resultId) {
     try {
         const [sRes, rRes] = await Promise.all([
             fetch('/api/students', { headers: { 'Authorization': `Bearer ${token}` } }),
@@ -1874,7 +2200,10 @@ async function printResultReport(resultId) {
         if (!r) return;
         const student = (Array.isArray(students) ? students : []).find(s => s.id === r.user_id)
             || { full_name: r.full_name, group_name: r.group_name };
-        printReportHtml(buildStudentReport(student, [r]));
+        window.PsyPdf.download(
+            buildStudentPdfDefinition(student, [r]),
+            `${t('report.title')}-${student.full_name}-${r.questionnaire_title}-${new Date().toISOString().slice(0, 10)}`
+        );
     } catch (e) {
         alert(t('msg.error') + ': ' + e.message);
     }
