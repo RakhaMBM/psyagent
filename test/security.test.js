@@ -65,3 +65,21 @@ test('CSP запрещает inline-скрипты и обработчики', (
     assert.doesNotMatch(source, /script-src[^;]*'unsafe-inline'/);
     assert.match(source, /script-src-attr 'none'/);
 });
+
+test('выборочные операции с пользователями сохраняют границы колледжа и ролей', () => {
+    const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    const admin = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.html'), 'utf8');
+    const adminScript = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.js'), 'utf8');
+    const platform = fs.readFileSync(path.join(__dirname, '..', 'public', 'platform.js'), 'utf8');
+
+    assert.match(server, /app\.post\('\/api\/users\/bulk', authenticateToken, requireAdmin/);
+    assert.match(server, /allowedRoles: \['student', 'curator'\]/);
+    assert.match(server, /app\.post\('\/api\/platform\/tenants\/:id\/users\/bulk', authenticateToken, requireSuperAdmin/);
+    assert.match(server, /const db = tenantPool\(tenant\.db_name\)/);
+    assert.match(admin, /id="selectAllStudents"/);
+    assert.match(admin, /id="selectAllCurators"/);
+    assert.match(adminScript, /data-user-select="student"/);
+    assert.match(adminScript, /data-user-select="curator"/);
+    assert.match(platform, /tenant\.is_active \? 'Отключить' : 'Включить'/);
+    assert.match(platform, /data-action="deleteTenant"/);
+});

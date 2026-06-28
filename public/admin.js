@@ -2,7 +2,12 @@ let token = localStorage.getItem('token');
 let currentUser = JSON.parse(localStorage.getItem('user'));
 const esc = window.escapeHtml;
 let adminStudentsCache = [];
+let adminCuratorsCache = [];
 let adminTestsCache = [];
+const selectedAdminUsers = {
+    student: new Set(),
+    curator: new Set()
+};
 
 function methodologyForResult(result) {
     if (result && result.methodology_data) {
@@ -55,6 +60,66 @@ function showSection(sectionName, trigger) {
     if (sectionName === 'methodologies') loadMethodologiesList();
     if (sectionName === 'curators') loadCurators();
     if (sectionName === 'anonymous') loadAnonymousCampaigns();
+}
+
+function adminUserSelectionConfig(role) {
+    return role === 'curator'
+        ? {
+            cache: adminCuratorsCache,
+            selected: selectedAdminUsers.curator,
+            countId: 'selectedCuratorsCount',
+            selectAllId: 'selectAllCurators',
+            resetButtonId: 'bulkResetCuratorsBtn',
+            deactivateButtonId: 'bulkDeactivateCuratorsBtn'
+        }
+        : {
+            cache: adminStudentsCache,
+            selected: selectedAdminUsers.student,
+            countId: 'selectedStudentsCount',
+            selectAllId: 'selectAllStudents',
+            resetButtonId: 'bulkResetStudentsBtn',
+            deactivateButtonId: 'bulkDeactivateStudentsBtn'
+        };
+}
+
+function updateAdminUserSelection(role) {
+    const config = adminUserSelectionConfig(role);
+    const selectedCount = config.selected.size;
+    const count = document.getElementById(config.countId);
+    if (count) count.textContent = selectedCount;
+    [config.resetButtonId, config.deactivateButtonId].forEach(id => {
+        const button = document.getElementById(id);
+        if (button) button.disabled = selectedCount === 0;
+    });
+    const selectAll = document.getElementById(config.selectAllId);
+    if (selectAll) {
+        selectAll.checked = config.cache.length > 0 && selectedCount === config.cache.length;
+        selectAll.indeterminate = selectedCount > 0 && selectedCount < config.cache.length;
+    }
+}
+
+function resetAdminUserSelection(role) {
+    adminUserSelectionConfig(role).selected.clear();
+    updateAdminUserSelection(role);
+}
+
+function toggleUserSelection(role, userId, element) {
+    const config = adminUserSelectionConfig(role);
+    if (element.checked) config.selected.add(Number(userId));
+    else config.selected.delete(Number(userId));
+    updateAdminUserSelection(role);
+}
+
+function toggleAllUsers(role, element) {
+    const config = adminUserSelectionConfig(role);
+    config.selected.clear();
+    if (element.checked) {
+        config.cache.forEach(item => config.selected.add(Number(item.id)));
+    }
+    document.querySelectorAll(`[data-user-select="${role}"]`).forEach(checkbox => {
+        checkbox.checked = element.checked;
+    });
+    updateAdminUserSelection(role);
 }
 
 // ===== Анонимные опросы =====
@@ -263,12 +328,20 @@ async function loadCurators() {
         const res = await fetch('/api/curators', { headers: { 'Authorization': `Bearer ${token}` } });
         const raw = await res.json();
         const list = Array.isArray(raw) ? raw : [];
+        adminCuratorsCache = list;
+        resetAdminUserSelection('curator');
         if (list.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-muted">${t('curators.empty')}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-muted">${t('curators.empty')}</td></tr>`;
             return;
         }
         tbody.innerHTML = list.map(c => `
             <tr>
+                <td class="selection-column">
+                    <input class="form-check-input" type="checkbox" data-user-select="curator"
+                           data-action="toggleUserSelection" data-action-args='["curator",${c.id}]'
+                           data-action-event="change" data-action-pass="element"
+                           aria-label="${t('users.selected')}: ${esc(c.full_name)}">
+                </td>
                 <td class="fw-semibold">${esc(c.full_name)}</td>
                 <td><code>${esc(c.username)}</code></td>
                 <td>${esc(c.group_name || '-')}</td>
@@ -277,7 +350,9 @@ async function loadCurators() {
                 </td>
             </tr>`).join('');
     } catch (e) {
-        tbody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-danger">${t('msg.error')}</td></tr>`;
+        adminCuratorsCache = [];
+        resetAdminUserSelection('curator');
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-danger">${t('msg.error')}</td></tr>`;
     }
 }
 
@@ -727,15 +802,22 @@ async function loadStudents() {
         const studentsRaw = await res.json();
         const students = Array.isArray(studentsRaw) ? studentsRaw : (studentsRaw?.data || []);
         adminStudentsCache = students;
+        resetAdminUserSelection('student');
 
         const tbody = document.getElementById('studentsTableBody');
         if (students.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">${t('students.not_found')}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-muted">${t('students.not_found')}</td></tr>`;
             return;
         }
 
         tbody.innerHTML = students.map(s => `
             <tr>
+                <td class="selection-column">
+                    <input class="form-check-input" type="checkbox" data-user-select="student"
+                           data-action="toggleUserSelection" data-action-args='["student",${s.id}]'
+                           data-action-event="change" data-action-pass="element"
+                           aria-label="${t('users.selected')}: ${esc(s.full_name)}">
+                </td>
                 <td class="fw-semibold">${esc(s.full_name)}</td>
                 <td>${formatDate(s.birth_date)}</td>
                 <td>${s.age != null ? s.age + ' ' + t('unit.years') : '-'}</td>
@@ -759,7 +841,11 @@ async function loadStudents() {
                 </td>
             </tr>
         `).join('');
-    } catch (e) { console.error(e); }
+    } catch (e) {
+        adminStudentsCache = [];
+        resetAdminUserSelection('student');
+        console.error(e);
+    }
 }
 
 let editingStudentId = null;
@@ -860,6 +946,46 @@ async function deleteStudent(id) {
         loadStudents();
         loadDashboardStats();
     } catch (e) { alert(t('msg.delete_error') + ': ' + e.message); }
+}
+
+async function runSelectedAdminUserAction(role, action, newPassword = null) {
+    const config = adminUserSelectionConfig(role);
+    const userIds = [...config.selected];
+    if (userIds.length === 0) {
+        alert(t('users.choose_first'));
+        return false;
+    }
+    const res = await fetch('/api/users/bulk', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ userIds, action, newPassword })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || t('msg.error'));
+    if (role === 'curator') await loadCurators();
+    else {
+        await loadStudents();
+        loadDashboardStats();
+    }
+    return true;
+}
+
+async function deactivateSelectedUsers(role) {
+    const config = adminUserSelectionConfig(role);
+    if (config.selected.size === 0) {
+        alert(t('users.choose_first'));
+        return;
+    }
+    if (!confirm(t('users.confirm_deactivate'))) return;
+    try {
+        const completed = await runSelectedAdminUserAction(role, 'deactivate');
+        if (completed) alert(t('users.deactivated'));
+    } catch (error) {
+        alert(`${t('msg.error')}: ${error.message}`);
+    }
 }
 
 // ========== ИМПОРТ СТУДЕНТОВ ИЗ EXCEL ==========
@@ -2276,8 +2402,9 @@ function logout() {
 }
 
 // ===== Смена/сброс пароля =====
-let pwMode = null;          // 'self' | 'student'
+let pwMode = null;          // 'self' | 'student' | 'bulk'
 let pwStudentId = null;
+let pwBulkRole = null;
 
 function pwShowError(msg) {
     const el = document.getElementById('pwError');
@@ -2288,6 +2415,7 @@ function pwShowError(msg) {
 function openSelfPassword() {
     pwMode = 'self';
     pwStudentId = null;
+    pwBulkRole = null;
     document.getElementById('passwordForm').reset();
     document.getElementById('pwError').classList.add('d-none');
     document.getElementById('pwCurrentWrap').classList.remove('d-none');
@@ -2299,6 +2427,7 @@ function openSelfPassword() {
 function openResetStudentPassword(id) {
     pwMode = 'student';
     pwStudentId = id;
+    pwBulkRole = null;
     const student = adminStudentsCache.find(item => item.id === id);
     const name = student ? student.full_name : '';
     document.getElementById('passwordForm').reset();
@@ -2306,6 +2435,24 @@ function openResetStudentPassword(id) {
     document.getElementById('pwCurrentWrap').classList.add('d-none');
     document.getElementById('pwCurrent').required = false;
     document.getElementById('pwModalTitle').textContent = t('pw.reset_student') + ': ' + name;
+    new bootstrap.Modal(document.getElementById('passwordModal')).show();
+}
+
+function openBulkUserPassword(role) {
+    const config = adminUserSelectionConfig(role);
+    if (config.selected.size === 0) {
+        alert(t('users.choose_first'));
+        return;
+    }
+    pwMode = 'bulk';
+    pwStudentId = null;
+    pwBulkRole = role;
+    document.getElementById('passwordForm').reset();
+    document.getElementById('pwError').classList.add('d-none');
+    document.getElementById('pwCurrentWrap').classList.add('d-none');
+    document.getElementById('pwCurrent').required = false;
+    document.getElementById('pwModalTitle').textContent =
+        `${t('pw.reset_selected')} (${config.selected.size})`;
     new bootstrap.Modal(document.getElementById('passwordModal')).show();
 }
 
@@ -2323,12 +2470,18 @@ document.getElementById('passwordForm').addEventListener('submit', async functio
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ currentPassword: document.getElementById('pwCurrent').value, newPassword })
             });
-        } else {
+        } else if (pwMode === 'student') {
             res = await fetch(`/api/students/${pwStudentId}/reset-password`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ newPassword })
             });
+        } else {
+            const completed = await runSelectedAdminUserAction(pwBulkRole, 'reset_password', newPassword);
+            if (!completed) return;
+            bootstrap.Modal.getInstance(document.getElementById('passwordModal')).hide();
+            alert(t('pw.reset_selected_done'));
+            return;
         }
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || t('msg.error'));

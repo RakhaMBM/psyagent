@@ -217,6 +217,16 @@ body {
     background-color: rgba(67, 97, 238, 0.05);
 }
 
+.selection-column {
+    width: 2.75rem;
+    text-align: center;
+}
+
+.selection-column .form-check-input {
+    margin: 0;
+    vertical-align: middle;
+}
+
 /* Badges */
 .badge {
     font-weight: 500;

@@ -21,6 +21,8 @@ const adminPassword = 'IntegrationAdmin-2026';
 const studentPassword = 'IntegrationStudent-2026';
 const legacyAdminPassword = 'IntegrationLegacy-2026';
 const defaultStudentPassword = 'IntegrationDefaultStudent-2026';
+const selectedUserPassword = 'IntegrationSelectedUser-2026';
+const platformManagedPassword = 'IntegrationPlatformUser-2026';
 const disposableTenantCode = `itdel_${suffix}`.slice(0, 50);
 const disposableTenantDb = `psyagent_it_t_${disposableTenantCode}`;
 
@@ -325,6 +327,24 @@ async function runScenario() {
     });
     const tenants = await request('/api/platform/tenants', { token: superadminLogin.token });
     assert.equal(tenants.length, 2);
+    const defaultTenantRow = tenants.find(item => item.code === 'default');
+    const legacyTenantRow = tenants.find(item => item.code === 'legacy');
+    assert.ok(defaultTenantRow && legacyTenantRow);
+
+    await request(`/api/platform/tenants/${legacyTenantRow.id}`, {
+        method: 'PATCH',
+        token: superadminLogin.token,
+        body: { is_active: false }
+    });
+    await request('/api/auth/login', {
+        method: 'POST',
+        body: { username: 'legacy_admin', password: legacyAdminPassword, college: 'legacy' }
+    }, 401);
+    await request(`/api/platform/tenants/${legacyTenantRow.id}`, {
+        method: 'PATCH',
+        token: superadminLogin.token,
+        body: { is_active: true }
+    });
 
     const disposableTenant = await request('/api/platform/tenants', {
         method: 'POST',
@@ -391,6 +411,122 @@ async function runScenario() {
         }
     });
     assert.equal(defaultPasswordLogin.user.role, 'student');
+
+    const selectedCurator = await request('/api/curators', {
+        method: 'POST',
+        token: adminToken,
+        body: {
+            username: 'selected_curator',
+            password: legacyAdminPassword,
+            full_name: 'Выбранный Куратор',
+            group_name: 'ИТ-101'
+        }
+    }, 201);
+    await request('/api/users/bulk', {
+        method: 'POST',
+        token: adminToken,
+        body: {
+            userIds: [selectedCurator.id],
+            action: 'reset_password',
+            newPassword: selectedUserPassword
+        }
+    });
+    const selectedCuratorLogin = await request('/api/auth/login', {
+        method: 'POST',
+        body: { username: 'selected_curator', password: selectedUserPassword, college: 'default' }
+    });
+    assert.equal(selectedCuratorLogin.user.role, 'curator');
+    await request('/api/users/bulk', {
+        method: 'POST',
+        token: adminToken,
+        body: { userIds: [selectedCurator.id], action: 'deactivate' }
+    });
+    await request('/api/auth/login', {
+        method: 'POST',
+        body: { username: 'selected_curator', password: selectedUserPassword, college: 'default' }
+    }, 401);
+    await request('/api/users/bulk', {
+        method: 'POST',
+        token: adminToken,
+        body: { userIds: [adminLogin.user.id], action: 'deactivate' }
+    }, 404);
+
+    const platformManagedUser = await request(
+        `/api/platform/tenants/${defaultTenantRow.id}/users`,
+        {
+            method: 'POST',
+            token: superadminLogin.token,
+            body: {
+                username: 'platform_managed_student',
+                password: defaultStudentPassword,
+                full_name: 'Управляемый Студент',
+                role: 'student',
+                birth_date: '2007-05-06',
+                group_name: 'ИТ-102',
+                email: 'managed@example.test'
+            }
+        },
+        201
+    );
+    const filteredPlatformUsers = await request(
+        `/api/platform/tenants/${defaultTenantRow.id}/users?search=platform_managed&role=student&status=active`,
+        { token: superadminLogin.token }
+    );
+    assert.equal(filteredPlatformUsers.length, 1);
+    assert.equal(filteredPlatformUsers[0].id, platformManagedUser.id);
+    await request(`/api/platform/tenants/${defaultTenantRow.id}/users/${platformManagedUser.id}`, {
+        method: 'PUT',
+        token: superadminLogin.token,
+        body: {
+            username: 'platform_managed_student',
+            full_name: 'Управляемый Студент Обновлён',
+            birth_date: '2007-05-06',
+            group_name: 'ИТ-103',
+            email: 'managed-updated@example.test',
+            phone: '+77000000000'
+        }
+    });
+    await request(`/api/platform/tenants/${defaultTenantRow.id}/users/bulk`, {
+        method: 'POST',
+        token: superadminLogin.token,
+        body: {
+            userIds: [platformManagedUser.id],
+            action: 'reset_password',
+            newPassword: platformManagedPassword
+        }
+    });
+    const platformManagedLogin = await request('/api/auth/login', {
+        method: 'POST',
+        body: {
+            username: 'platform_managed_student',
+            password: platformManagedPassword,
+            college: 'default'
+        }
+    });
+    assert.equal(platformManagedLogin.user.groupName, 'ИТ-103');
+    await request(`/api/platform/tenants/${defaultTenantRow.id}/users/bulk`, {
+        method: 'POST',
+        token: superadminLogin.token,
+        body: { userIds: [platformManagedUser.id], action: 'deactivate' }
+    });
+    await request('/api/auth/login', {
+        method: 'POST',
+        body: {
+            username: 'platform_managed_student',
+            password: platformManagedPassword,
+            college: 'default'
+        }
+    }, 401);
+    await request(`/api/platform/tenants/${defaultTenantRow.id}/users/bulk`, {
+        method: 'POST',
+        token: superadminLogin.token,
+        body: { userIds: [platformManagedUser.id], action: 'activate' }
+    });
+    await request(`/api/platform/tenants/${defaultTenantRow.id}/users/bulk`, {
+        method: 'POST',
+        token: superadminLogin.token,
+        body: { userIds: [adminLogin.user.id], action: 'deactivate' }
+    }, 400);
 
     const anonymousTemplate = PSY_ANONYMOUS_SURVEYS[0];
     const anonymousCampaign = await request('/api/anonymous-campaigns', {

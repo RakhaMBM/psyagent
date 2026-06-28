@@ -18,7 +18,8 @@
 - `server.js` — весь REST API и отдача страниц.
 - `schema.sql` — создание БД `psych_diagnostic`, таблиц, индексов и пользователя БД.
 - `public/index.html` + `index.js` — вход; пары `admin.*`, `student.*`, `curator.*`, `platform.*` —
-  соответствующие кабинеты. Inline-JavaScript запрещён CSP.
+  соответствующие кабинеты. В `/platform` супер-администратор управляет колледжами и выбранными
+  пользователями выбранного колледжа. Inline-JavaScript запрещён CSP.
 - `public/anonymous.html` + `anonymous.js` — публичная обезличенная форма; определения двух
   встроенных анкет находятся в `public/anonymous-surveys.js`.
 - `public/pdf-download.js` — общие определения и скачивание PDF через pdfmake.

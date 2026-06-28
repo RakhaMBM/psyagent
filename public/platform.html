@@ -45,41 +45,6 @@
                 </div>
             </div>
 
-            <!-- Сброс пароля пользователя (поддержка) -->
-            <div class="col-12">
-                <div class="card shadow-sm border-0 rounded-4">
-                    <div class="card-body p-4">
-                        <h5 class="fw-bold mb-3"><i class="bi bi-key me-2"></i>Сброс пароля пользователя <span class="text-muted small">(поддержка)</span></h5>
-                        <div class="row g-2 align-items-end mb-3">
-                            <div class="col-md-4">
-                                <label class="form-label small mb-1">Колледж</label>
-                                <select class="form-select" id="supportTenant">
-                                    <option value="">— выберите колледж —</option>
-                                </select>
-                            </div>
-                            <div class="col-md-5">
-                                <label class="form-label small mb-1">Поиск пользователя</label>
-                                <input type="text" class="form-control" id="supportSearch" placeholder="ФИО или логин">
-                            </div>
-                            <div class="col-md-3">
-                                <button class="btn btn-outline-primary w-100" data-action="loadTenantUsers"><i class="bi bi-search me-1"></i>Найти</button>
-                            </div>
-                        </div>
-                        <div id="supportMsg"></div>
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0">
-                                <thead>
-                                    <tr><th>ФИО</th><th>Логин</th><th>Роль</th><th>Группа</th><th class="text-end">Действие</th></tr>
-                                </thead>
-                                <tbody id="supportUsers">
-                                    <tr><td colspan="5" class="text-center text-muted py-3">Выберите колледж</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Создание колледжа -->
             <div class="col-lg-5">
                 <div class="card shadow-sm border-0 rounded-4">
@@ -116,6 +81,182 @@
                         </form>
                     </div>
                 </div>
+            </div>
+
+            <!-- Управление пользователями выбранного колледжа -->
+            <div class="col-12">
+                <div class="card shadow-sm border-0 rounded-4">
+                    <div class="card-body p-4">
+                        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
+                            <div>
+                                <h5 class="fw-bold mb-1"><i class="bi bi-people me-2"></i>Управление пользователями</h5>
+                                <p class="text-muted small mb-0">Операции выполняются только над отмеченными пользователями.</p>
+                            </div>
+                            <button class="btn btn-primary" id="addPlatformUserBtn" data-action="openPlatformUserModal" disabled>
+                                <i class="bi bi-person-plus me-1"></i>Добавить пользователя
+                            </button>
+                        </div>
+
+                        <div class="row g-2 align-items-end mb-3">
+                            <div class="col-lg-3 col-md-6">
+                                <label class="form-label small mb-1">Колледж</label>
+                                <select class="form-select" id="supportTenant">
+                                    <option value="">— выберите колледж —</option>
+                                </select>
+                            </div>
+                            <div class="col-lg-3 col-md-6">
+                                <label class="form-label small mb-1">Поиск</label>
+                                <input type="search" class="form-control" id="supportSearch" placeholder="ФИО или логин">
+                            </div>
+                            <div class="col-lg-2 col-md-4">
+                                <label class="form-label small mb-1">Роль</label>
+                                <select class="form-select" id="supportRole">
+                                    <option value="">Все роли</option>
+                                    <option value="admin">Психологи</option>
+                                    <option value="curator">Кураторы</option>
+                                    <option value="student">Студенты</option>
+                                </select>
+                            </div>
+                            <div class="col-lg-2 col-md-4">
+                                <label class="form-label small mb-1">Статус</label>
+                                <select class="form-select" id="supportStatus">
+                                    <option value="">Все статусы</option>
+                                    <option value="active">Активные</option>
+                                    <option value="inactive">Отключённые</option>
+                                </select>
+                            </div>
+                            <div class="col-lg-2 col-md-4">
+                                <button class="btn btn-outline-primary w-100" data-action="loadTenantUsers">
+                                    <i class="bi bi-search me-1"></i>Применить
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="supportMsg"></div>
+                        <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+                            <span class="text-muted small">Выбрано: <strong id="platformSelectedCount">0</strong></span>
+                            <button class="btn btn-sm btn-outline-primary" id="editPlatformUserBtn"
+                                    data-action="editSelectedPlatformUser" disabled>
+                                <i class="bi bi-pencil me-1"></i>Редактировать
+                            </button>
+                            <button class="btn btn-sm btn-outline-warning" id="resetPlatformUsersBtn"
+                                    data-action="openPlatformPasswordModal" disabled>
+                                <i class="bi bi-key me-1"></i>Сменить пароль
+                            </button>
+                            <button class="btn btn-sm btn-outline-success" id="activatePlatformUsersBtn"
+                                    data-action="runSelectedPlatformAction" data-action-args='["activate"]' disabled>
+                                <i class="bi bi-person-check me-1"></i>Включить
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" id="deactivatePlatformUsersBtn"
+                                    data-action="runSelectedPlatformAction" data-action-args='["deactivate"]' disabled>
+                                <i class="bi bi-person-x me-1"></i>Отключить
+                            </button>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th class="selection-column">
+                                            <input class="form-check-input" type="checkbox" id="selectAllPlatformUsers"
+                                                   data-action="toggleAllPlatformUsers" data-action-event="change"
+                                                   data-action-pass="element" aria-label="Выбрать всех пользователей">
+                                        </th>
+                                        <th>ФИО</th><th>Логин</th><th>Роль</th><th>Группа</th>
+                                        <th>Контакты</th><th class="text-center">Статус</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="supportUsers">
+                                    <tr><td colspan="7" class="text-center text-muted py-3">Выберите колледж</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="platformUserModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="platformUserModalTitle">Добавить пользователя</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="platformUserForm">
+                    <div class="modal-body">
+                        <div id="platformUserError" class="alert alert-danger d-none py-2"></div>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">ФИО *</label>
+                                <input type="text" class="form-control" name="full_name" required maxlength="255">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Логин *</label>
+                                <input type="text" class="form-control" name="username" required maxlength="100">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Роль *</label>
+                                <select class="form-select" name="role" id="platformUserRole" required>
+                                    <option value="student">Студент</option>
+                                    <option value="curator">Куратор</option>
+                                    <option value="admin">Психолог</option>
+                                </select>
+                                <div class="form-text d-none" id="platformRoleLockedHint">Роль существующего пользователя не изменяется.</div>
+                            </div>
+                            <div class="col-md-6" id="platformUserPasswordWrap">
+                                <label class="form-label">Пароль * <span class="text-muted small">(минимум 8 символов)</span></label>
+                                <input type="password" class="form-control" name="password" minlength="8" autocomplete="new-password">
+                            </div>
+                            <div class="col-md-6" id="platformBirthDateWrap">
+                                <label class="form-label">Дата рождения *</label>
+                                <input type="date" class="form-control" name="birth_date">
+                            </div>
+                            <div class="col-md-6" id="platformGroupWrap">
+                                <label class="form-label">Группа</label>
+                                <input type="text" class="form-control" name="group_name" maxlength="100">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Email</label>
+                                <input type="email" class="form-control" name="email" maxlength="150">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Телефон</label>
+                                <input type="text" class="form-control" name="phone" maxlength="20">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                        <button type="submit" class="btn btn-primary">Сохранить</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="platformPasswordModal" tabindex="-1">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Смена пароля выбранным</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="platformPasswordForm">
+                    <div class="modal-body">
+                        <div id="platformPasswordError" class="alert alert-danger d-none py-2"></div>
+                        <p class="small text-muted">Один новый пароль будет установлен только отмеченным пользователям: <strong id="platformPasswordCount">0</strong>.</p>
+                        <label class="form-label">Новый пароль</label>
+                        <input type="password" class="form-control" id="platformNewPassword"
+                               minlength="8" autocomplete="new-password" required>
+                        <div class="form-text">Минимум 8 символов</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                        <button type="submit" class="btn btn-primary">Сохранить</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

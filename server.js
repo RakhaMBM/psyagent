@@ -588,6 +588,86 @@ async function logAction(db, userId, action, entityType, entityId, details = nul
     } catch (e) { /* игнорируем ошибки логирования */ }
 }
 
+function normalizeSelectedUserIds(value) {
+    if (!Array.isArray(value) || value.length === 0 || value.length > 200) return null;
+    const ids = [...new Set(value.map(Number))];
+    if (ids.some(id => !Number.isSafeInteger(id) || id <= 0)) return null;
+    return ids;
+}
+
+async function bulkUpdateUsers(db, {
+    userIds,
+    action,
+    newPassword,
+    allowedRoles = ['admin', 'curator', 'student'],
+    protectLastAdmin = false
+}) {
+    const ids = normalizeSelectedUserIds(userIds);
+    if (!ids) {
+        const error = new Error('Выберите от 1 до 200 пользователей');
+        error.statusCode = 400;
+        throw error;
+    }
+    if (!['reset_password', 'activate', 'deactivate'].includes(action)) {
+        const error = new Error('Неизвестная операция');
+        error.statusCode = 400;
+        throw error;
+    }
+    if (action === 'reset_password' && String(newPassword || '').length < 8) {
+        const error = new Error('Пароль должен быть не короче 8 символов');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const placeholders = ids.map(() => '?').join(',');
+    const rolePlaceholders = allowedRoles.map(() => '?').join(',');
+    const [targets] = await db.execute(
+        `SELECT id, username, role, is_active
+         FROM users
+         WHERE id IN (${placeholders}) AND role IN (${rolePlaceholders})`,
+        [...ids, ...allowedRoles]
+    );
+    if (targets.length !== ids.length) {
+        const error = new Error('Один или несколько пользователей не найдены или недоступны');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    if (protectLastAdmin && action === 'deactivate' &&
+        targets.some(target => target.role === 'admin' && Boolean(target.is_active))) {
+        const [[remaining]] = await db.execute(
+            `SELECT COUNT(*) AS n
+             FROM users
+             WHERE role = 'admin' AND is_active = TRUE AND id NOT IN (${placeholders})`,
+            ids
+        );
+        if (Number(remaining.n) === 0) {
+            const error = new Error('Нельзя отключить последнего активного психолога колледжа');
+            error.statusCode = 400;
+            throw error;
+        }
+    }
+
+    if (action === 'reset_password') {
+        const hash = await bcrypt.hash(String(newPassword), 10);
+        await db.execute(
+            `UPDATE users
+             SET password = ?, token_version = token_version + 1
+             WHERE id IN (${placeholders})`,
+            [hash, ...ids]
+        );
+    } else {
+        await db.execute(
+            `UPDATE users
+             SET is_active = ?, token_version = token_version + 1
+             WHERE id IN (${placeholders})`,
+            [action === 'activate' ? 1 : 0, ...ids]
+        );
+    }
+
+    return { ids, targets };
+}
+
 function parseJsonValue(value, fallback = null) {
     if (value == null) return fallback;
     if (typeof value !== 'string') return value;
@@ -1091,6 +1171,35 @@ app.post('/api/students/:id/reset-password', authenticateToken, requireAdmin, as
     } catch (error) {
         console.error('Ошибка сброса пароля студента:', error);
         res.status(500).json({ error: 'Ошибка сброса пароля' });
+    }
+});
+
+// Выборочные операции администратора колледжа со студентами и кураторами.
+// Администраторы исключены из области действия, чтобы психолог не мог менять чужую учётную запись.
+app.post('/api/users/bulk', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { userIds, action, newPassword } = req.body || {};
+        const result = await bulkUpdateUsers(req.db, {
+            userIds,
+            action,
+            newPassword,
+            allowedRoles: ['student', 'curator']
+        });
+        await logAction(req.db, req.user.id, `BULK_USER_${String(action).toUpperCase()}`, 'user', null, {
+            userIds: result.ids,
+            users: result.targets.map(target => target.username)
+        });
+        const actionLabel = action === 'reset_password'
+            ? 'Пароли изменены'
+            : action === 'activate'
+                ? 'Пользователи включены'
+                : 'Пользователи отключены';
+        res.json({ message: `${actionLabel}: ${result.ids.length}`, affected: result.ids.length });
+    } catch (error) {
+        console.error('Ошибка выборочной операции с пользователями:', error);
+        res.status(error.statusCode || 500).json({
+            error: error.statusCode ? error.message : 'Ошибка операции с пользователями'
+        });
     }
 });
 
@@ -2518,26 +2627,218 @@ app.delete('/api/platform/tenants/:id', authenticateToken, requireSuperAdmin, as
     }
 });
 
-// Список пользователей выбранного колледжа (для поддержки: поиск + сброс пароля).
+// Список пользователей выбранного колледжа для полноценного управления супер-администратором.
 app.get('/api/platform/tenants/:id/users', authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-        const [[tenant]] = await controlPool.execute('SELECT * FROM tenants WHERE id = ?', [req.params.id]);
+        const [[tenant]] = await controlPool.execute(
+            'SELECT id, code, name, db_name, is_active FROM tenants WHERE id = ?',
+            [req.params.id]
+        );
         if (!tenant) return res.status(404).json({ error: 'Колледж не найден' });
 
         const db = tenantPool(tenant.db_name);
-        let query = 'SELECT id, username, full_name, role, group_name, is_active FROM users';
+        let query = `
+            SELECT id, username, full_name, role, birth_date, group_name,
+                   email, phone, is_active, created_at
+            FROM users
+            WHERE 1 = 1
+        `;
         const params = [];
         const search = String(req.query.search || '').trim();
         if (search) {
-            query += ' WHERE full_name LIKE ? OR username LIKE ?';
+            query += ' AND (full_name LIKE ? OR username LIKE ?)';
             params.push(`%${search}%`, `%${search}%`);
         }
-        query += ' ORDER BY FIELD(role, "admin", "curator", "student"), full_name LIMIT 200';
+        const role = String(req.query.role || '').trim();
+        if (role) {
+            if (!['admin', 'curator', 'student'].includes(role)) {
+                return res.status(400).json({ error: 'Некорректная роль' });
+            }
+            query += ' AND role = ?';
+            params.push(role);
+        }
+        const status = String(req.query.status || '').trim();
+        if (status) {
+            if (!['active', 'inactive'].includes(status)) {
+                return res.status(400).json({ error: 'Некорректный статус' });
+            }
+            query += ' AND is_active = ?';
+            params.push(status === 'active' ? 1 : 0);
+        }
+        query += ' ORDER BY FIELD(role, "admin", "curator", "student"), full_name LIMIT 500';
         const [users] = await db.execute(query, params);
         res.json(users);
     } catch (error) {
         console.error('Ошибка списка пользователей колледжа:', error);
         res.status(500).json({ error: 'Ошибка загрузки пользователей' });
+    }
+});
+
+// Создание пользователя в выбранном колледже. Данные всегда записываются в БД этого колледжа.
+app.post('/api/platform/tenants/:id/users', authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+        const [[tenant]] = await controlPool.execute(
+            'SELECT id, code, db_name FROM tenants WHERE id = ?',
+            [req.params.id]
+        );
+        if (!tenant) return res.status(404).json({ error: 'Колледж не найден' });
+
+        const {
+            username, password, full_name, role,
+            birth_date, group_name, email, phone
+        } = req.body || {};
+        if (!username || !full_name || !role || !password) {
+            return res.status(400).json({ error: 'Укажите логин, пароль, ФИО и роль' });
+        }
+        if (!['admin', 'curator', 'student'].includes(role)) {
+            return res.status(400).json({ error: 'Некорректная роль' });
+        }
+        if (String(password).length < 8) {
+            return res.status(400).json({ error: 'Пароль должен быть не короче 8 символов' });
+        }
+        if (role === 'student' && !birth_date) {
+            return res.status(400).json({ error: 'Для студента укажите дату рождения' });
+        }
+        if (role === 'curator' && !String(group_name || '').trim()) {
+            return res.status(400).json({ error: 'Для куратора укажите группу' });
+        }
+
+        const db = tenantPool(tenant.db_name);
+        const hash = await bcrypt.hash(String(password), 10);
+        const conn = await db.getConnection();
+        try {
+            await conn.beginTransaction();
+            const [created] = await conn.execute(
+                `INSERT INTO users
+                    (username, password, full_name, role, birth_date, group_name, email, phone)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    String(username).trim(), hash, String(full_name).trim(), role,
+                    birth_date || null, String(group_name || '').trim() || null,
+                    String(email || '').trim() || null, String(phone || '').trim() || null
+                ]
+            );
+            if (role === 'student') {
+                await conn.execute(
+                    `INSERT INTO student_profiles (user_id, family_type, lives_with)
+                     VALUES (?, 'full', NULL)`,
+                    [created.insertId]
+                );
+            }
+            await logAction(conn, null, 'PLATFORM_CREATE_USER', 'user', created.insertId, {
+                bySuperAdmin: req.user.id,
+                tenantCode: tenant.code,
+                username: String(username).trim(),
+                role
+            });
+            await conn.commit();
+            res.status(201).json({ message: 'Пользователь создан', id: created.insertId });
+        } catch (error) {
+            await conn.rollback();
+            throw error;
+        } finally {
+            conn.release();
+        }
+    } catch (error) {
+        console.error('Ошибка создания пользователя супер-администратором:', error);
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({ error: 'Пользователь с таким логином уже существует' });
+        }
+        res.status(500).json({ error: 'Ошибка создания пользователя' });
+    }
+});
+
+// Редактирование основных данных пользователя. Роль не меняется, чтобы не нарушить связанные данные.
+app.put('/api/platform/tenants/:id/users/:userId', authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+        const [[tenant]] = await controlPool.execute(
+            'SELECT id, code, db_name FROM tenants WHERE id = ?',
+            [req.params.id]
+        );
+        if (!tenant) return res.status(404).json({ error: 'Колледж не найден' });
+
+        const db = tenantPool(tenant.db_name);
+        const [[target]] = await db.execute(
+            'SELECT id, role FROM users WHERE id = ?',
+            [req.params.userId]
+        );
+        if (!target) return res.status(404).json({ error: 'Пользователь не найден' });
+
+        const { username, full_name, birth_date, group_name, email, phone } = req.body || {};
+        if (!username || !full_name) {
+            return res.status(400).json({ error: 'Укажите логин и ФИО' });
+        }
+        if (target.role === 'student' && !birth_date) {
+            return res.status(400).json({ error: 'Для студента укажите дату рождения' });
+        }
+        if (target.role === 'curator' && !String(group_name || '').trim()) {
+            return res.status(400).json({ error: 'Для куратора укажите группу' });
+        }
+
+        const [updated] = await db.execute(
+            `UPDATE users
+             SET username = ?, full_name = ?, birth_date = ?, group_name = ?,
+                 email = ?, phone = ?, updated_at = NOW()
+             WHERE id = ?`,
+            [
+                String(username).trim(), String(full_name).trim(), birth_date || null,
+                String(group_name || '').trim() || null,
+                String(email || '').trim() || null, String(phone || '').trim() || null,
+                req.params.userId
+            ]
+        );
+        if (updated.affectedRows === 0) {
+            return res.status(404).json({ error: 'Пользователь не найден' });
+        }
+        await logAction(db, null, 'PLATFORM_UPDATE_USER', 'user', Number(req.params.userId), {
+            bySuperAdmin: req.user.id,
+            tenantCode: tenant.code,
+            username: String(username).trim()
+        });
+        res.json({ message: 'Пользователь обновлён' });
+    } catch (error) {
+        console.error('Ошибка обновления пользователя супер-администратором:', error);
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({ error: 'Пользователь с таким логином уже существует' });
+        }
+        res.status(500).json({ error: 'Ошибка обновления пользователя' });
+    }
+});
+
+// Выборочные операции с пользователями выбранного колледжа.
+app.post('/api/platform/tenants/:id/users/bulk', authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+        const [[tenant]] = await controlPool.execute(
+            'SELECT id, code, db_name FROM tenants WHERE id = ?',
+            [req.params.id]
+        );
+        if (!tenant) return res.status(404).json({ error: 'Колледж не найден' });
+
+        const { userIds, action, newPassword } = req.body || {};
+        const db = tenantPool(tenant.db_name);
+        const result = await bulkUpdateUsers(db, {
+            userIds,
+            action,
+            newPassword,
+            protectLastAdmin: true
+        });
+        await logAction(db, null, `PLATFORM_BULK_USER_${String(action).toUpperCase()}`, 'user', null, {
+            bySuperAdmin: req.user.id,
+            tenantCode: tenant.code,
+            userIds: result.ids,
+            users: result.targets.map(target => target.username)
+        });
+        const actionLabel = action === 'reset_password'
+            ? 'Пароли изменены'
+            : action === 'activate'
+                ? 'Пользователи включены'
+                : 'Пользователи отключены';
+        res.json({ message: `${actionLabel}: ${result.ids.length}`, affected: result.ids.length });
+    } catch (error) {
+        console.error('Ошибка выборочной операции супер-администратора:', error);
+        res.status(error.statusCode || 500).json({
+            error: error.statusCode ? error.message : 'Ошибка операции с пользователями'
+        });
     }
 });
 
@@ -2556,14 +2857,12 @@ app.post('/api/platform/reset-password', authenticateToken, requireSuperAdmin, a
         if (!tenant) return res.status(404).json({ error: 'Колледж не найден' });
 
         const db = tenantPool(tenant.db_name);
-        const [[targetUser]] = await db.execute('SELECT id, username FROM users WHERE id = ?', [userId]);
-        if (!targetUser) return res.status(404).json({ error: 'Пользователь не найден' });
-
-        const hash = await bcrypt.hash(newPassword, 10);
-        await db.execute(
-            'UPDATE users SET password = ?, token_version = token_version + 1 WHERE id = ?',
-            [hash, userId]
-        );
+        const result = await bulkUpdateUsers(db, {
+            userIds: [userId],
+            action: 'reset_password',
+            newPassword
+        });
+        const targetUser = result.targets[0];
         // Аудит в БД колледжа (актор не из users этого колледжа -> user_id = null, контекст в details).
         await logAction(db, null, 'SUPPORT_RESET_PASSWORD', 'user', parseInt(userId), {
             bySuperAdmin: req.user.id, superAdminName: req.user.fullName, username: targetUser.username
