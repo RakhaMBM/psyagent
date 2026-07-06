@@ -891,6 +891,21 @@ PSY_ROOT.scoreMethodology = function (meth, answers) {
  * диапазон интерпретации отмечен флагом attention: true (это задаёт сама методика).
  * -> { atRisk: boolean, reasons: [{ scale, label }] }
  */
+/**
+ * Методика для строки результата: приоритет — снимок methodology_data,
+ * сохранённый вместе с тестом; иначе поиск по названию в справочнике.
+ */
+PSY_ROOT.methodologyForResult = function (result) {
+    if (result && result.methodology_data) {
+        try {
+            return typeof result.methodology_data === 'string'
+                ? JSON.parse(result.methodology_data)
+                : result.methodology_data;
+        } catch (_) {}
+    }
+    return PSY_ROOT.findMethodologyByTitle(result && result.questionnaire_title);
+};
+
 PSY_ROOT.resultAttention = function (meth, answers) {
     if (!meth || typeof PSY_ROOT.scoreMethodology !== 'function') return { atRisk: false, reasons: [] };
     const sc = PSY_ROOT.scoreMethodology(meth, answers || {});
@@ -909,6 +924,7 @@ if (typeof module !== 'undefined' && module.exports) {
         interpretMethodology: PSY_ROOT.interpretMethodology,
         hasWeightedOptions: PSY_ROOT.hasWeightedOptions,
         scoreMethodology: PSY_ROOT.scoreMethodology,
-        resultAttention: PSY_ROOT.resultAttention
+        resultAttention: PSY_ROOT.resultAttention,
+        methodologyForResult: PSY_ROOT.methodologyForResult
     };
 }

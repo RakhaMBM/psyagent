@@ -15,18 +15,6 @@ function logout() {
 }
 function fmtDate(d) { return d ? new Date(d).toLocaleDateString(getLang() === 'kz' ? 'kk-KZ' : 'ru-RU') : '-'; }
 function fmtDateTime(d) { return d ? new Date(d).toLocaleString(getLang() === 'kz' ? 'kk-KZ' : 'ru-RU') : '-'; }
-function methodologyForResult(result) {
-    if (result && result.methodology_data) {
-        try {
-            return typeof result.methodology_data === 'string'
-                ? JSON.parse(result.methodology_data)
-                : result.methodology_data;
-        } catch (_) {}
-    }
-    return window.findMethodologyByTitle
-        ? window.findMethodologyByTitle(result && result.questionnaire_title)
-        : null;
-}
 
 async function loadCustomMethodologies() {
     try {
@@ -106,57 +94,10 @@ function esc(s) {
 function downloadStudentReport(studentId) {
     const student = studentsCache.find(s => s.id === studentId);
     if (!student) return;
-    const results = resultsCache.filter(r => r.user_id === studentId)
-        .sort((a, b) => new Date(a.completed_at || 0) - new Date(b.completed_at || 0));
-
-    const content = [
-        { text: t('report.title'), style: 'title' },
-        {
-            text: new Date().toLocaleDateString(getLang() === 'kz' ? 'kk-KZ' : 'ru-RU'),
-            style: 'date'
-        },
-        window.PsyPdf.keyValueTable([
-            [t('table.fio'), student.full_name],
-            [t('table.group'), student.group_name || '—'],
-            [t('table.birth_date'), fmtDate(student.birth_date)],
-            [t('field.school'), student.school || '—']
-        ]),
-        { text: t('report.results'), style: 'section' }
-    ];
-
-    if (!results.length) content.push({ text: t('report.no_results'), color: '#667085' });
-    results.forEach(result => {
-        content.push(
-            { text: result.questionnaire_title, style: 'subsection' },
-            { text: `${t('table.date')}: ${fmtDateTime(result.completed_at)}`, style: 'meta' }
-        );
-        const methodology = methodologyForResult(result);
-        if (methodology && window.scoreMethodology && result.answers) {
-            const scored = window.scoreMethodology(methodology, result.answers);
-            scored.validity.filter(item => item.failed).forEach(item => {
-                content.push({
-                    text: `⚠ ${item.warning || item.name} (${item.value})`,
-                    style: 'warning'
-                });
-            });
-            content.push(window.PsyPdf.table(
-                [t('rmodal.scale'), t('table.score'), t('rmodal.interpretation')],
-                scored.scales.filter(scale => scale.display !== false).map(scale => [
-                    scale.name,
-                    `${scale.raw}${scale.maxScore != null ? ` / ${scale.maxScore}` : ''}`,
-                    scale.interp ? scale.interp.label : '—'
-                ]),
-                ['42%', '18%', '40%']
-            ));
-        } else {
-            content.push({ text: `${t('table.score')}: ${result.score}`, margin: [0, 0, 0, 5] });
-        }
-    });
-    content.push({ text: `${t('report.psychologist')}: ____________________`, style: 'signature' });
-
+    const results = resultsCache.filter(r => r.user_id === studentId);
     try {
         window.PsyPdf.download(
-            window.PsyPdf.baseDefinition(content, { title: t('report.title') }),
+            window.PsyPdf.buildStudentReport(student, results),
             `${t('report.title')}-${student.full_name}-${new Date().toISOString().slice(0, 10)}`
         );
     } catch (error) {

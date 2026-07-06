@@ -20,15 +20,22 @@ function responseMarker() {
     return `psyagent-anonymous-submitted:${collegeCode}:${accessToken}`;
 }
 
+function selectedAnswers() {
+    const answers = {};
+    for (const question of surveyData.survey.questions) {
+        const checked = document.querySelector(`input[name="${CSS.escape(question.id)}"]:checked`);
+        if (checked) answers[question.id] = checked.value;
+    }
+    return answers;
+}
+
 function updateConditionalQuestions() {
     if (!surveyData) return;
+    const answers = selectedAnswers();
     for (const question of surveyData.survey.questions) {
         if (!question.showWhen) continue;
-        const selected = document.querySelector(
-            `input[name="${question.showWhen.questionId}"]:checked`
-        )?.value;
-        const visible = selected != null && selected !== question.showWhen.notEquals;
-        const card = document.querySelector(`[data-question-id="${question.id}"]`);
+        const visible = window.isAnonymousQuestionVisible(question, answers);
+        const card = document.querySelector(`[data-question-id="${CSS.escape(question.id)}"]`);
         if (!card) continue;
         card.classList.toggle('d-none', !visible);
         card.querySelectorAll('input').forEach(input => {
@@ -51,7 +58,7 @@ function renderSurvey(data) {
             <div class="card-body p-4">
                 <h2 class="h6 mb-3">${index + 1}. ${esc(question.text)}${question.showWhen ? ` <span class="text-muted fw-normal">(${t('anonymous.optional')})</span>` : ''}</h2>
                 <div class="d-grid gap-2">
-                    ${question.options.map((option, optionIndex) => `
+                    ${(Array.isArray(question.options) ? question.options : []).map((option, optionIndex) => `
                         <label class="anonymous-option border rounded-3 p-3" for="${esc(question.id)}-${optionIndex}">
                             <input class="form-check-input me-2" type="radio"
                                    name="${esc(question.id)}" id="${esc(question.id)}-${optionIndex}"
@@ -88,6 +95,9 @@ async function loadAnonymousSurvey() {
         );
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || t('anonymous.load_error'));
+        if (!data.survey || !Array.isArray(data.survey.questions)) {
+            throw new Error(t('anonymous.load_error'));
+        }
         renderSurvey(data);
     } catch (error) {
         showSurveyError(error.message);

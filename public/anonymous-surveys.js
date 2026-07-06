@@ -1,7 +1,10 @@
 (function (root, factory) {
     const api = factory();
     if (typeof module === 'object' && module.exports) module.exports = api;
-    if (root) root.PSY_ANONYMOUS_SURVEYS = api.PSY_ANONYMOUS_SURVEYS;
+    if (root) {
+        root.PSY_ANONYMOUS_SURVEYS = api.PSY_ANONYMOUS_SURVEYS;
+        root.isAnonymousQuestionVisible = api.isAnonymousQuestionVisible;
+    }
 })(typeof window !== 'undefined' ? window : globalThis, function () {
     'use strict';
 
@@ -170,5 +173,15 @@
         }
     ];
 
-    return { PSY_ANONYMOUS_SURVEYS };
+    // Единое правило видимости условного вопроса (showWhen): им пользуются
+    // сервер (валидация и очистка ответов) и страница анонимного опроса,
+    // чтобы логика не расходилась между слоями.
+    function isAnonymousQuestionVisible(question, answers) {
+        const dependency = question && question.showWhen;
+        if (!dependency) return true;
+        const value = answers ? answers[dependency.questionId] : null;
+        return value != null && value !== dependency.notEquals;
+    }
+
+    return { PSY_ANONYMOUS_SURVEYS, isAnonymousQuestionVisible };
 });

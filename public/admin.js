@@ -9,19 +9,6 @@ const selectedAdminUsers = {
     curator: new Set()
 };
 
-function methodologyForResult(result) {
-    if (result && result.methodology_data) {
-        try {
-            return typeof result.methodology_data === 'string'
-                ? JSON.parse(result.methodology_data)
-                : result.methodology_data;
-        } catch (_) {}
-    }
-    return window.findMethodologyByTitle
-        ? window.findMethodologyByTitle(result && result.questionnaire_title)
-        : null;
-}
-
 if (!token || currentUser?.role !== 'admin') {
     window.location.href = '/';
 }
@@ -136,7 +123,7 @@ async function loadAnonymousTemplates() {
         if (!response.ok) throw new Error(templates.error || t('msg.error'));
         const previous = select.value;
         select.innerHTML = `<option value="">${t('anonymous.choose_template')}</option>` +
-            templates.map(template =>
+            (Array.isArray(templates) ? templates : []).map(template =>
                 `<option value="${esc(template.id)}">${esc(template.title)} · ${template.questionsCount} ${t('tests.q_count')}</option>`
             ).join('');
         select.value = previous;
@@ -290,13 +277,13 @@ async function viewAnonymousReport(id) {
                 <div class="col-md-4"><div class="stat-card stat-card-primary"><div class="stat-icon"><i class="bi bi-chat-square-check"></i></div><div class="stat-info"><h3>${report.response_count}</h3><p>${t('anonymous.responses')}</p></div></div></div>
                 <div class="col-md-8"><div class="alert alert-success mb-0"><i class="bi bi-incognito me-2"></i>${t('anonymous.aggregate_only')}</div></div>
             </div>
-            ${report.questions.map((question, index) => `
+            ${(Array.isArray(report.questions) ? report.questions : []).map((question, index) => `
                 <div class="card mb-3">
                     <div class="card-body">
                         <h6>${index + 1}. ${esc(question.text)}</h6>
                         <div class="table-responsive">
                             <table class="table table-sm mb-0">
-                                <tbody>${question.options.map(option => `
+                                <tbody>${(Array.isArray(question.options) ? question.options : []).map(option => `
                                     <tr>
                                         <td>${esc(option.text)}</td>
                                         <td class="text-end text-nowrap">${option.count} (${option.percent}%)</td>
@@ -1883,88 +1870,13 @@ function reportFamilyLabel(ft) {
 }
 
 function buildStudentPdfDefinition(student, results) {
-    const content = [
-        { text: t('report.title'), style: 'title' },
-        {
-            text: new Date().toLocaleDateString(getLang() === 'kz' ? 'kk-KZ' : 'ru-RU'),
-            style: 'date'
-        },
-        window.PsyPdf.keyValueTable(
-            [
-                [t('table.fio'), student.full_name || '—'],
-                [t('table.group'), student.group_name || '—'],
-                [
-                    t('table.birth_date'),
-                    `${student.birth_date ? formatDate(student.birth_date) : '—'}${student.age != null ? ` (${student.age} ${t('unit.years')})` : ''}`
-                ],
-                [t('field.school'), student.school || '—'],
-                [t('field.family_type'), reportFamilyLabel(student.family_type)],
-                [t('field.lives_with'), student.lives_with || '—']
-            ]
-        ),
-        { text: t('report.results'), style: 'section' }
-    ];
-
-    const byTest = new Map();
-    results.forEach(result => {
-        const title = result.questionnaire_title || '—';
-        if (!byTest.has(title)) byTest.set(title, []);
-        byTest.get(title).push(result);
+    return window.PsyPdf.buildStudentReport(student, results, {
+        extraInfoRows: [
+            [t('field.family_type'), reportFamilyLabel(student.family_type)],
+            [t('field.lives_with'), student.lives_with || '—']
+        ],
+        psychologistName: currentUser.fullName || ''
     });
-
-    if (!results.length) {
-        content.push({ text: t('report.no_results'), color: '#667085' });
-    }
-
-    for (const [title, group] of byTest.entries()) {
-        group.sort((a, b) => new Date(a.completed_at || 0) - new Date(b.completed_at || 0));
-        content.push({ text: title, style: 'subsection' });
-        if (group.length > 1) {
-            const dynamics = group.map(result => {
-                const methodology = methodologyForResult(result);
-                const scored = methodology && window.scoreMethodology
-                    ? window.scoreMethodology(methodology, result.answers || {})
-                    : null;
-                return scored && scored.primary ? scored.primary.raw : result.score;
-            });
-            content.push({ text: `${t('report.dynamics')}: ${dynamics.join(' → ')}`, style: 'meta' });
-        }
-        for (const result of group) {
-            content.push({ text: `${t('table.date')}: ${formatDateTime(result.completed_at)}`, style: 'meta' });
-            const methodology = methodologyForResult(result);
-            const scored = methodology && window.scoreMethodology
-                ? window.scoreMethodology(methodology, result.answers || {})
-                : null;
-            if (!scored) {
-                content.push({ text: `${t('table.score')}: ${result.score}`, margin: [0, 0, 0, 5] });
-                continue;
-            }
-            scored.validity.filter(item => item.failed).forEach(item => {
-                content.push({
-                    text: `⚠ ${item.warning || item.name} (${item.value})`,
-                    style: 'warning'
-                });
-            });
-            content.push(window.PsyPdf.table(
-                [t('rmodal.scale'), t('table.score'), t('rmodal.interpretation')],
-                scored.scales.filter(scale => scale.display !== false).map(scale => [
-                    scale.name,
-                    `${scale.raw}${scale.maxScore != null ? ` / ${scale.maxScore}` : ''}`,
-                    scale.interp ? scale.interp.label : '—'
-                ]),
-                ['42%', '18%', '40%']
-            ));
-        }
-    }
-
-    content.push(
-        { text: `${t('report.notes')}: ________________________________________________`, margin: [0, 18, 0, 8] },
-        {
-            text: `${t('report.psychologist')}: ____________________ / ${currentUser.fullName || ''}`,
-            style: 'signature'
-        }
-    );
-    return window.PsyPdf.baseDefinition(content, { title: t('report.title') });
 }
 
 let summaryReportHtml = '';
@@ -2090,7 +2002,7 @@ function buildSummaryReport(scope, students, results, groupName) {
 
     return `
         <h1>${title}</h1>
-        <p class="date">${new Date().toLocaleDateString(getLang() === 'kz' ? 'kk-KZ' : 'ru-RU')}</p>
+        <p class="date">${formatDate(new Date())}</p>
         <p class="meta">${summaryFilterDescription(scope, groupName)}</p>
         <table class="info">
             <tr><td>${t('table.students')}</td><td>${students.length}</td></tr>
@@ -2126,10 +2038,7 @@ function buildSummaryPdfDefinition(scope, students, results, groupName) {
 
     const content = [
         { text: title, style: 'title' },
-        {
-            text: new Date().toLocaleDateString(getLang() === 'kz' ? 'kk-KZ' : 'ru-RU'),
-            style: 'date'
-        },
+        { text: formatDate(new Date()), style: 'date' },
         { text: filterHolder.value, style: 'meta' },
         window.PsyPdf.keyValueTable(
             [
@@ -2297,16 +2206,15 @@ function downloadOpenSummaryReport() {
 async function downloadStudentReport(studentId) {
     try {
         const [sRes, rRes] = await Promise.all([
-            fetch('/api/students', { headers: { 'Authorization': `Bearer ${token}` } }),
-            fetch('/api/results', { headers: { 'Authorization': `Bearer ${token}` } })
+            fetch(`/api/students?studentId=${studentId}`, { headers: { 'Authorization': `Bearer ${token}` } }),
+            fetch(`/api/results?studentId=${studentId}`, { headers: { 'Authorization': `Bearer ${token}` } })
         ]);
         const students = await sRes.json();
         const results = await rRes.json();
         const student = (Array.isArray(students) ? students : []).find(s => s.id === studentId);
         if (!student) return;
-        const userResults = (Array.isArray(results) ? results : []).filter(r => r.user_id === studentId);
         window.PsyPdf.download(
-            buildStudentPdfDefinition(student, userResults),
+            buildStudentPdfDefinition(student, Array.isArray(results) ? results : []),
             `${t('report.title')}-${student.full_name}-${new Date().toISOString().slice(0, 10)}`
         );
     } catch (e) {
@@ -2316,14 +2224,12 @@ async function downloadStudentReport(studentId) {
 
 async function downloadResultReport(resultId) {
     try {
-        const [sRes, rRes] = await Promise.all([
-            fetch('/api/students', { headers: { 'Authorization': `Bearer ${token}` } }),
-            fetch('/api/results', { headers: { 'Authorization': `Bearer ${token}` } })
-        ]);
-        const students = await sRes.json();
+        const rRes = await fetch(`/api/results?resultId=${resultId}`, { headers: { 'Authorization': `Bearer ${token}` } });
         const results = await rRes.json();
         const r = (Array.isArray(results) ? results : []).find(x => x.id === resultId);
         if (!r) return;
+        const sRes = await fetch(`/api/students?studentId=${r.user_id}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const students = await sRes.json();
         const student = (Array.isArray(students) ? students : []).find(s => s.id === r.user_id)
             || { full_name: r.full_name, group_name: r.group_name };
         window.PsyPdf.download(

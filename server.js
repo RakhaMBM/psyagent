@@ -9,7 +9,7 @@ const {
     findMethodologyByTitle,
     scoreMethodology
 } = require('./public/methodologies');
-const { PSY_ANONYMOUS_SURVEYS } = require('./public/anonymous-surveys');
+const { PSY_ANONYMOUS_SURVEYS, isAnonymousQuestionVisible } = require('./public/anonymous-surveys');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -160,9 +160,7 @@ async function syncTenantSchemas() {
     const [tenants] = await controlPool.execute(
         'SELECT db_name FROM tenants WHERE is_active = TRUE'
     );
-    for (const t of tenants) {
-        await ensureTenantSchema(tenantPool(t.db_name));
-    }
+    await Promise.all(tenants.map(t => ensureTenantSchema(tenantPool(t.db_name))));
     console.log(` Схемы колледжей синхронизированы (${tenants.length}).`);
 }
 
@@ -698,12 +696,7 @@ function validateAnonymousAnswers(survey, answers) {
     }
     for (const question of survey.questions) {
         const value = answers[question.id];
-        const dependency = question.showWhen;
-        const isVisible = !dependency || (
-            answers[dependency.questionId] != null &&
-            answers[dependency.questionId] !== dependency.notEquals
-        );
-        if (!isVisible) continue;
+        if (!isAnonymousQuestionVisible(question, answers)) continue;
         if (question.required !== false && value == null) {
             return `Ответьте на вопрос «${question.text}»`;
         }
@@ -1006,6 +999,11 @@ app.get('/api/students', authenticateToken, requireStaff, async (req, res) => {
         if (search) {
             query += ' AND (u.full_name LIKE ? OR u.username LIKE ?)';
             params.push(`%${search}%`, `%${search}%`);
+        }
+
+        if (req.query.studentId) {
+            query += ' AND u.id = ?';
+            params.push(parseInt(req.query.studentId));
         }
         
         query += ' ORDER BY u.group_name, u.full_name';
@@ -1948,6 +1946,14 @@ app.get('/api/results', authenticateToken, requireStaff, async (req, res) => {
             query += ' AND r.questionnaire_id = ?';
             params.push(parseInt(questionnaireId));
         }
+        if (req.query.studentId) {
+            query += ' AND r.user_id = ?';
+            params.push(parseInt(req.query.studentId));
+        }
+        if (req.query.resultId) {
+            query += ' AND r.id = ?';
+            params.push(parseInt(req.query.resultId));
+        }
         if (search) {
             query += ' AND LOWER(u.full_name) LIKE ?';
             params.push(`%${search.toLowerCase()}%`);
@@ -2300,12 +2306,7 @@ app.post('/api/anonymous-surveys/:college/:token/responses', async (req, res) =>
 
         const cleanedAnswers = {};
         for (const question of survey.questions) {
-            const dependency = question.showWhen;
-            const isVisible = !dependency || (
-                answers[dependency.questionId] != null &&
-                answers[dependency.questionId] !== dependency.notEquals
-            );
-            if (isVisible && answers[question.id] != null) {
+            if (isAnonymousQuestionVisible(question, answers) && answers[question.id] != null) {
                 cleanedAnswers[question.id] = answers[question.id];
             }
         }
