@@ -165,6 +165,16 @@
             }
         }
 
+        // Сохранённый ИИ-анализ (opts.aiAnalysis — строка): pdfmake рендерит plain text безопасно.
+        if (opts.aiAnalysis) {
+            content.push({ text: t('report.ai_section'), style: 'section' });
+            String(opts.aiAnalysis).split(/\n{2,}/).forEach(part => {
+                const text = part.trim();
+                if (text) content.push({ text, margin: [0, 0, 0, 5] });
+            });
+            content.push({ text: t('ai.disclaimer'), style: 'meta' });
+        }
+
         content.push(
             { text: `${t('report.notes')}: ________________________________________________`, margin: [0, 18, 0, 8] },
             {

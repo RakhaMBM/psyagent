@@ -56,6 +56,17 @@ if (DEFAULT_STUDENT_PASSWORD && DEFAULT_STUDENT_PASSWORD.length < 8) {
     throw new Error('DEFAULT_STUDENT_PASSWORD должен быть не короче 8 символов');
 }
 
+// ИИ-анализ через Open Web UI (OpenAI-совместимый API). Необязательная функция:
+// без полного набора переменных фича отключена, интерфейс скрывает кнопки.
+const OPENWEBUI_BASE_URL = String(process.env.OPENWEBUI_BASE_URL || '').trim().replace(/\/+$/, '');
+const OPENWEBUI_API_KEY = String(process.env.OPENWEBUI_API_KEY || '').trim();
+const OPENWEBUI_MODEL = String(process.env.OPENWEBUI_MODEL || '').trim();
+const OPENWEBUI_TIMEOUT_MS = Math.max(10000, Number(process.env.OPENWEBUI_TIMEOUT_MS) || 120000);
+const AI_ANALYSIS_ENABLED = Boolean(OPENWEBUI_BASE_URL && OPENWEBUI_API_KEY && OPENWEBUI_MODEL);
+if (!AI_ANALYSIS_ENABLED && (OPENWEBUI_BASE_URL || OPENWEBUI_API_KEY || OPENWEBUI_MODEL)) {
+    console.warn(' ИИ-анализ отключён: задайте все три переменные OPENWEBUI_BASE_URL, OPENWEBUI_API_KEY и OPENWEBUI_MODEL.');
+}
+
 if (!configuredJwtSecret) {
     console.warn(' JWT_SECRET не задан: используется временный случайный ключ только для этой сессии.');
 }
@@ -391,6 +402,18 @@ async function ensureTenantSchema(db) {
             submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (campaign_id) REFERENCES anonymous_campaigns(id) ON DELETE CASCADE,
             KEY idx_anonymous_responses_campaign (campaign_id, submitted_at)
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+        `CREATE TABLE IF NOT EXISTS ai_analyses (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            scope ENUM('result','student','group') NOT NULL,
+            target_id VARCHAR(120) NOT NULL,
+            model VARCHAR(120),
+            source_count INT NOT NULL DEFAULT 1,
+            content MEDIUMTEXT NOT NULL,
+            created_by INT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_ai_scope_target (scope, target_id),
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
         ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
     ];
     for (const sql of stmts) {
@@ -829,6 +852,171 @@ async function resolveMethodologyForQuestionnaire(db, questionnaire) {
     );
     return rows.length ? parseJsonValue(rows[0].data, null) : null;
 }
+
+// ============================================
+// ИИ-АНАЛИЗ РЕЗУЛЬТАТОВ (Open Web UI)
+// ============================================
+
+// Вызов OpenAI-совместимого API Open Web UI. Ошибки несут statusCode для ответа клиенту.
+async function callLlm(messages) {
+    if (!AI_ANALYSIS_ENABLED) {
+        const error = new Error('ИИ-анализ не настроен. Задайте OPENWEBUI_BASE_URL, OPENWEBUI_API_KEY и OPENWEBUI_MODEL.');
+        error.statusCode = 503;
+        throw error;
+    }
+    let response;
+    try {
+        response = await fetch(`${OPENWEBUI_BASE_URL}/api/chat/completions`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${OPENWEBUI_API_KEY}`
+            },
+            body: JSON.stringify({ model: OPENWEBUI_MODEL, messages, stream: false, temperature: 0.3 }),
+            signal: AbortSignal.timeout(OPENWEBUI_TIMEOUT_MS)
+        });
+    } catch (cause) {
+        const isTimeout = cause && (cause.name === 'TimeoutError' || cause.name === 'AbortError');
+        const error = new Error(isTimeout ? 'ИИ-сервис не ответил вовремя' : 'ИИ-сервис недоступен');
+        error.statusCode = isTimeout ? 504 : 502;
+        throw error;
+    }
+    if (!response.ok) {
+        const error = new Error(`Ошибка ИИ-сервиса (HTTP ${response.status})`);
+        error.statusCode = 502;
+        throw error;
+    }
+    const data = await response.json().catch(() => null);
+    const content = data && data.choices && data.choices[0] && data.choices[0].message
+        ? String(data.choices[0].message.content || '').trim()
+        : '';
+    if (!content) {
+        const error = new Error('ИИ-сервис вернул пустой ответ');
+        error.statusCode = 502;
+        throw error;
+    }
+    return content;
+}
+
+// Обезличенная сводка одного результата для промпта.
+// Никогда не включает ФИО/логин/контакты студента.
+function buildScoredSummary(row) {
+    const answers = parseJsonValue(row.answers, {});
+    const methodology = parseJsonValue(row.methodology_data, null)
+        || findMethodologyByTitle(row.questionnaire_title);
+    const base = {
+        test: row.questionnaire_title,
+        completed_at: row.completed_at ? new Date(row.completed_at).toISOString().slice(0, 10) : null
+    };
+    if (!methodology) {
+        return { ...base, score: row.score != null ? Number(row.score) : null, scales: null };
+    }
+    const scored = scoreMethodology(methodology, answers);
+    return {
+        ...base,
+        scales: scored.scales
+            .filter(scale => scale.display !== false)
+            .map(scale => ({
+                name: scale.name,
+                raw: scale.raw,
+                max: scale.maxScore != null ? scale.maxScore : null,
+                level: scale.interp ? scale.interp.level : null,
+                label: scale.interp ? scale.interp.label : null,
+                attention: Boolean(scale.interp && scale.interp.attention)
+            })),
+        validity_warnings: (scored.validity || [])
+            .filter(check => check.failed)
+            .map(check => check.warning || check.name)
+    };
+}
+
+function studentAgeFromBirthDate(birthDate) {
+    if (!birthDate) return null;
+    const born = new Date(birthDate);
+    if (Number.isNaN(born.getTime())) return null;
+    const now = new Date();
+    let age = now.getFullYear() - born.getFullYear();
+    if (now.getMonth() < born.getMonth() ||
+        (now.getMonth() === born.getMonth() && now.getDate() < born.getDate())) age--;
+    return age >= 0 && age < 120 ? age : null;
+}
+
+const AI_PROMPT_COMMON = `Ты — ассистент педагога-психолога колледжа. Тебе передают ОБЕЗЛИЧЕННЫЕ результаты стандартизированных психологических методик (названия шкал, баллы, уровни, отметки зон внимания).
+Правила:
+- Пиши по-русски, структурированно: краткое резюме; интерпретация по шкалам; зоны внимания и риска; практические рекомендации психологу.
+- Опирайся ТОЛЬКО на переданные данные. Не выдумывай факты и не запрашивай личные данные студентов.
+- Если есть предупреждения шкал достоверности — обязательно оговори ограничения выводов.
+- В конце обязательно укажи: это автоматический вспомогательный анализ, НЕ диагноз; окончательные выводы делает специалист.
+- Не используй markdown-таблицы; пиши короткими абзацами и списками, начиная пункты с "-".`;
+
+function buildResultPrompt(summary, meta) {
+    const system = `${AI_PROMPT_COMMON}\nЗадача: проинтерпретируй результат одного прохождения теста студентом.`;
+    const payload = {
+        student: { group: meta && meta.group || null, age: meta && meta.age != null ? meta.age : null },
+        result: summary
+    };
+    return [
+        { role: 'system', content: system },
+        { role: 'user', content: `Данные результата:\n${JSON.stringify(payload, null, 1)}` }
+    ];
+}
+
+function buildStudentPrompt(meta, summaries) {
+    const system = `${AI_PROMPT_COMMON}\nЗадача: составь целостный психологический портрет студента по всем его результатам. При повторных прохождениях одного теста отметь динамику.`;
+    const payload = {
+        student: { group: meta && meta.group || null, age: meta && meta.age != null ? meta.age : null },
+        results: summaries
+    };
+    return [
+        { role: 'system', content: system },
+        { role: 'user', content: `Все результаты студента (по датам):\n${JSON.stringify(payload, null, 1)}` }
+    ];
+}
+
+const AI_GROUP_STUDENT_LIMIT = 50;
+
+function buildGroupPrompt(groupName, students) {
+    const system = `${AI_PROMPT_COMMON}\nЗадача: выяви групповые тенденции и зоны риска по группе. Студенты пронумерованы условно ("Студент 1", "Студент 2", ...) — НЕ делай персональных выводов, только групповые.`;
+    const limited = students.slice(0, AI_GROUP_STUDENT_LIMIT);
+    let atRiskCount = 0;
+    const levelDistribution = {};
+    const anonymized = limited.map((student, index) => {
+        let atRisk = false;
+        (student.results || []).forEach(summary => {
+            (summary.scales || []).forEach(scale => {
+                if (scale.attention) atRisk = true;
+                if (scale.level) {
+                    const key = `${summary.test} / ${scale.name}`;
+                    if (!levelDistribution[key]) levelDistribution[key] = {};
+                    levelDistribution[key][scale.level] = (levelDistribution[key][scale.level] || 0) + 1;
+                }
+            });
+        });
+        if (atRisk) atRiskCount++;
+        return {
+            label: `Студент ${index + 1}`,
+            age: student.age != null ? student.age : null,
+            results: student.results
+        };
+    });
+    const payload = {
+        group: groupName,
+        aggregates: {
+            tested_students: limited.length,
+            at_risk_count: atRiskCount,
+            level_distribution: levelDistribution,
+            truncated: students.length > AI_GROUP_STUDENT_LIMIT
+                ? `Показаны первые ${AI_GROUP_STUDENT_LIMIT} из ${students.length} студентов`
+                : undefined
+        },
+        students: anonymized
+    };
+    return [
+        { role: 'system', content: system },
+        { role: 'user', content: `Данные группы:\n${JSON.stringify(payload, null, 1)}` }
+    ];
+}
+
 // ============================================
 // API РОУТЫ - АУТЕНТИФИКАЦИЯ
 // ============================================
@@ -1998,6 +2186,10 @@ app.delete('/api/results/:id', authenticateToken, requireAdmin, async (req, res)
         if (result.affectedRows === 0) {
             return res.status(404).json({ error: 'Результат не найден' });
         }
+        await req.db.execute(
+            "DELETE FROM ai_analyses WHERE scope = 'result' AND target_id = ?",
+            [String(req.params.id)]
+        );
         await logAction(req.db, req.user.id, 'DELETE_RESULT', 'result', parseInt(req.params.id));
         res.json({ message: 'Результат удалён' });
     } catch (error) {
@@ -2059,6 +2251,181 @@ app.get('/api/export/json', authenticateToken, requireAdmin, async (req, res) =>
     } catch (error) {
         console.error('Ошибка экспорта:', error);
         res.status(500).json({ error: 'Ошибка экспорта' });
+    }
+});
+
+// ============================================
+// API РОУТЫ - ИИ-АНАЛИЗ
+// ============================================
+
+const AI_RESULT_ROW_SQL = `
+    SELECT r.id, r.answers, r.score, r.completed_at,
+           u.id AS user_id, u.group_name, u.birth_date,
+           q.title AS questionnaire_title, q.methodology_data
+    FROM results r
+    JOIN users u ON r.user_id = u.id
+    JOIN questionnaires q ON r.questionnaire_id = q.id
+    WHERE r.status = 'completed'
+`;
+
+// Валидация scope/targetId + скоупинг куратора. Возвращает {targetId, ...},
+// при ошибке бросает Error со statusCode. Чужие result/student для куратора — 404,
+// чтобы не раскрывать их существование.
+async function resolveAiTarget(req) {
+    const scope = String((req.body && req.body.scope) || req.query.scope || '').trim();
+    const rawTarget = String((req.body && req.body.targetId) || req.query.targetId || '').trim();
+    const fail = (statusCode, message) => {
+        const error = new Error(message);
+        error.statusCode = statusCode;
+        throw error;
+    };
+    if (!['result', 'student', 'group'].includes(scope)) fail(400, 'Некорректная область анализа');
+    const curatorGroup = req.user.role === 'curator' ? String(req.user.group || '') : null;
+
+    if (scope === 'group') {
+        const groupName = rawTarget.slice(0, 100);
+        if (!groupName) fail(400, 'Укажите группу');
+        if (curatorGroup !== null && groupName !== curatorGroup) fail(403, 'Доступ запрещён');
+        const [[{ n }]] = await req.db.execute(
+            "SELECT COUNT(*) AS n FROM users WHERE role = 'student' AND is_active = TRUE AND group_name = ?",
+            [groupName]
+        );
+        if (Number(n) === 0) fail(404, 'В группе нет студентов');
+        return { scope, targetId: groupName };
+    }
+
+    const numericId = parseInt(rawTarget, 10);
+    if (!Number.isSafeInteger(numericId) || numericId <= 0) fail(400, 'Некорректный идентификатор');
+
+    if (scope === 'result') {
+        const [rows] = await req.db.execute(`${AI_RESULT_ROW_SQL} AND r.id = ?`, [numericId]);
+        if (rows.length === 0) fail(404, 'Результат не найден');
+        if (curatorGroup !== null && String(rows[0].group_name || '') !== curatorGroup) fail(404, 'Результат не найден');
+        return { scope, targetId: String(numericId), resultRow: rows[0] };
+    }
+
+    // scope === 'student'
+    const [students] = await req.db.execute(
+        "SELECT id, group_name, birth_date FROM users WHERE id = ? AND role = 'student' AND is_active = TRUE",
+        [numericId]
+    );
+    if (students.length === 0) fail(404, 'Студент не найден');
+    if (curatorGroup !== null && String(students[0].group_name || '') !== curatorGroup) fail(404, 'Студент не найден');
+    return { scope, targetId: String(numericId), student: students[0] };
+}
+
+// Доступность функции — фронтенд по этому флагу показывает кнопки.
+app.get('/api/ai/status', authenticateToken, requireStaff, (req, res) => {
+    res.json({ enabled: AI_ANALYSIS_ENABLED, model: AI_ANALYSIS_ENABLED ? OPENWEBUI_MODEL : null });
+});
+
+// Сохранённый (кэшированный) анализ; 200 с null, если ещё не создавался.
+app.get('/api/ai/analysis', authenticateToken, requireStaff, async (req, res) => {
+    try {
+        const target = await resolveAiTarget(req);
+        const [rows] = await req.db.execute(
+            `SELECT a.content, a.model, a.created_at, a.source_count, u.full_name AS created_by_name
+             FROM ai_analyses a
+             LEFT JOIN users u ON a.created_by = u.id
+             WHERE a.scope = ? AND a.target_id = ?`,
+            [target.scope, target.targetId]
+        );
+        res.json({ analysis: rows.length ? rows[0] : null });
+    } catch (error) {
+        if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+        console.error('Ошибка чтения ИИ-анализа:', error);
+        res.status(500).json({ error: 'Ошибка загрузки анализа' });
+    }
+});
+
+// Защита от параллельной генерации одного и того же анализа.
+const aiGenerationsInFlight = new Set();
+
+// Генерация (и перегенерация) анализа: собирает обезличенные данные,
+// вызывает LLM и перезаписывает кэш (хранится только последний вариант).
+app.post('/api/ai/analysis', authenticateToken, requireStaff, async (req, res) => {
+    let inFlightKey = null;
+    try {
+        const target = await resolveAiTarget(req);
+        inFlightKey = `${req.user.tenantCode || 'default'}:${target.scope}:${target.targetId}`;
+        if (aiGenerationsInFlight.has(inFlightKey)) {
+            inFlightKey = null;
+            return res.status(429).json({ error: 'Анализ уже формируется, подождите' });
+        }
+        aiGenerationsInFlight.add(inFlightKey);
+
+        let messages;
+        let sourceCount;
+        if (target.scope === 'result') {
+            const row = target.resultRow;
+            messages = buildResultPrompt(buildScoredSummary(row), {
+                group: row.group_name,
+                age: studentAgeFromBirthDate(row.birth_date)
+            });
+            sourceCount = 1;
+        } else if (target.scope === 'student') {
+            const [rows] = await req.db.execute(
+                `${AI_RESULT_ROW_SQL} AND r.user_id = ? ORDER BY r.completed_at ASC`,
+                [Number(target.targetId)]
+            );
+            if (rows.length === 0) {
+                return res.status(400).json({ error: 'Нет завершённых результатов для анализа' });
+            }
+            messages = buildStudentPrompt(
+                { group: target.student.group_name, age: studentAgeFromBirthDate(target.student.birth_date) },
+                rows.map(buildScoredSummary)
+            );
+            sourceCount = rows.length;
+        } else {
+            const [rows] = await req.db.execute(
+                `${AI_RESULT_ROW_SQL} AND u.group_name = ? ORDER BY r.user_id, r.completed_at ASC`,
+                [target.targetId]
+            );
+            if (rows.length === 0) {
+                return res.status(400).json({ error: 'Нет завершённых результатов для анализа' });
+            }
+            const byStudent = new Map();
+            rows.forEach(row => {
+                if (!byStudent.has(row.user_id)) {
+                    byStudent.set(row.user_id, {
+                        age: studentAgeFromBirthDate(row.birth_date),
+                        results: []
+                    });
+                }
+                byStudent.get(row.user_id).results.push(buildScoredSummary(row));
+            });
+            messages = buildGroupPrompt(target.targetId, [...byStudent.values()]);
+            sourceCount = rows.length;
+        }
+
+        const content = await callLlm(messages);
+        const [upsert] = await req.db.execute(
+            `INSERT INTO ai_analyses (scope, target_id, model, source_count, content, created_by)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+                 model = VALUES(model), source_count = VALUES(source_count),
+                 content = VALUES(content), created_by = VALUES(created_by),
+                 created_at = CURRENT_TIMESTAMP`,
+            [target.scope, target.targetId, OPENWEBUI_MODEL, sourceCount, content, req.user.id]
+        );
+        await logAction(req.db, req.user.id, 'AI_ANALYZE', 'ai_analysis', upsert.insertId || null, {
+            scope: target.scope,
+            targetId: target.targetId
+        });
+        res.json({
+            analysis: {
+                content,
+                model: OPENWEBUI_MODEL,
+                source_count: sourceCount,
+                created_at: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+        console.error('Ошибка генерации ИИ-анализа:', error);
+        res.status(500).json({ error: 'Ошибка генерации анализа' });
+    } finally {
+        if (inFlightKey) aiGenerationsInFlight.delete(inFlightKey);
     }
 });
 
@@ -2949,5 +3316,11 @@ module.exports = {
     validateAnonymousAnswers,
     fallbackQuestionnaireScore,
     deriveResultMetadata,
-    validateDatabasePassword
+    validateDatabasePassword,
+    callLlm,
+    buildScoredSummary,
+    buildResultPrompt,
+    buildStudentPrompt,
+    buildGroupPrompt,
+    studentAgeFromBirthDate
 };

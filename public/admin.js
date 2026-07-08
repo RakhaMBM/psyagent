@@ -812,6 +812,9 @@ async function loadStudents() {
                 <td>${esc(s.school || '-')}</td>
                 <td>
                     <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary d-none" data-ai-only data-action="openStudentAiAnalysis" data-action-args='[${s.id}]' title="${t('ai.title')}">
+                            <i class="bi bi-stars"></i>
+                        </button>
                         <button class="btn btn-outline-secondary" data-action="downloadStudentReport" data-action-args='[${s.id}]' title="${t('report.download')}">
                             <i class="bi bi-file-earmark-pdf"></i>
                         </button>
@@ -828,11 +831,28 @@ async function loadStudents() {
                 </td>
             </tr>
         `).join('');
+        window.PsyAi?.reveal();
     } catch (e) {
         adminStudentsCache = [];
         resetAdminUserSelection('student');
         console.error(e);
     }
+}
+
+// ИИ-анализ по студенту: имя показывается только в заголовке модалки, на сервер не уходит.
+function openStudentAiAnalysis(studentId) {
+    const student = adminStudentsCache.find(s => s.id === studentId);
+    window.PsyAi?.openModal('student', studentId, student ? student.full_name : '');
+}
+
+// ИИ-анализ по группе из фильтра результатов.
+function openGroupAiAnalysis() {
+    const groupName = document.getElementById('resultGroup')?.value;
+    if (!groupName) {
+        alert(t('ai.select_group'));
+        return;
+    }
+    window.PsyAi?.openModal('group', groupName, groupName);
 }
 
 let editingStudentId = null;
@@ -1857,9 +1877,11 @@ async function viewResult(resultId) {
                     </tbody>
                 </table>
             </div>
+            <div id="resultAiBlock"></div>
         `;
 
         new bootstrap.Modal(document.getElementById('resultModal')).show();
+        window.PsyAi?.loadAiAnalysis('result', result.id, 'resultAiBlock');
     } catch (e) {}
 }
 
@@ -1869,14 +1891,29 @@ function reportFamilyLabel(ft) {
     return map[ft] ? t(map[ft]) : '—';
 }
 
-function buildStudentPdfDefinition(student, results) {
+function buildStudentPdfDefinition(student, results, aiAnalysis = '') {
     return window.PsyPdf.buildStudentReport(student, results, {
         extraInfoRows: [
             [t('field.family_type'), reportFamilyLabel(student.family_type)],
             [t('field.lives_with'), student.lives_with || '—']
         ],
-        psychologistName: currentUser.fullName || ''
+        psychologistName: currentUser.fullName || '',
+        aiAnalysis
     });
+}
+
+// Сохранённый ИИ-анализ для PDF; при любой ошибке — пустая строка (отчёт без секции).
+async function fetchSavedAiAnalysis(scope, targetId) {
+    try {
+        if (!window.PsyAi?.enabled) return '';
+        const params = new URLSearchParams({ scope, targetId: String(targetId) });
+        const res = await fetch(`/api/ai/analysis?${params}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) return '';
+        const data = await res.json();
+        return data?.analysis?.content || '';
+    } catch (e) {
+        return '';
+    }
 }
 
 let summaryReportHtml = '';
@@ -2205,16 +2242,17 @@ function downloadOpenSummaryReport() {
 
 async function downloadStudentReport(studentId) {
     try {
-        const [sRes, rRes] = await Promise.all([
+        const [sRes, rRes, aiAnalysis] = await Promise.all([
             fetch(`/api/students?studentId=${studentId}`, { headers: { 'Authorization': `Bearer ${token}` } }),
-            fetch(`/api/results?studentId=${studentId}`, { headers: { 'Authorization': `Bearer ${token}` } })
+            fetch(`/api/results?studentId=${studentId}`, { headers: { 'Authorization': `Bearer ${token}` } }),
+            fetchSavedAiAnalysis('student', studentId)
         ]);
         const students = await sRes.json();
         const results = await rRes.json();
         const student = (Array.isArray(students) ? students : []).find(s => s.id === studentId);
         if (!student) return;
         window.PsyPdf.download(
-            buildStudentPdfDefinition(student, Array.isArray(results) ? results : []),
+            buildStudentPdfDefinition(student, Array.isArray(results) ? results : [], aiAnalysis),
             `${t('report.title')}-${student.full_name}-${new Date().toISOString().slice(0, 10)}`
         );
     } catch (e) {
@@ -2228,12 +2266,15 @@ async function downloadResultReport(resultId) {
         const results = await rRes.json();
         const r = (Array.isArray(results) ? results : []).find(x => x.id === resultId);
         if (!r) return;
-        const sRes = await fetch(`/api/students?studentId=${r.user_id}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const [sRes, aiAnalysis] = await Promise.all([
+            fetch(`/api/students?studentId=${r.user_id}`, { headers: { 'Authorization': `Bearer ${token}` } }),
+            fetchSavedAiAnalysis('result', resultId)
+        ]);
         const students = await sRes.json();
         const student = (Array.isArray(students) ? students : []).find(s => s.id === r.user_id)
             || { full_name: r.full_name, group_name: r.group_name };
         window.PsyPdf.download(
-            buildStudentPdfDefinition(student, [r]),
+            buildStudentPdfDefinition(student, [r], aiAnalysis),
             `${t('report.title')}-${student.full_name}-${r.questionnaire_title}-${new Date().toISOString().slice(0, 10)}`
         );
     } catch (e) {

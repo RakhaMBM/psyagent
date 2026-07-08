@@ -55,8 +55,12 @@ function renderStudents() {
             <td>${fmtDate(s.birth_date)}</td>
             <td>${s.age != null ? s.age + ' ' + t('unit.years') : '-'}</td>
             <td>${esc(s.school || '-')}</td>
-            <td><button class="btn btn-sm btn-outline-secondary" data-action="downloadStudentReport" data-action-args='[${s.id}]'><i class="bi bi-file-earmark-pdf me-1"></i>${t('report.download')}</button></td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary d-none" data-ai-only data-action="openStudentAiAnalysis" data-action-args='[${s.id}]' title="${t('ai.title')}"><i class="bi bi-stars"></i></button>
+                <button class="btn btn-sm btn-outline-secondary" data-action="downloadStudentReport" data-action-args='[${s.id}]'><i class="bi bi-file-earmark-pdf me-1"></i>${t('report.download')}</button>
+            </td>
         </tr>`).join('');
+    window.PsyAi?.reveal();
 }
 
 function resultInterp(r) {
@@ -90,14 +94,33 @@ function esc(s) {
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// ИИ-анализ: имя студента показывается только в заголовке модалки, на сервер не уходит.
+function openStudentAiAnalysis(studentId) {
+    const student = studentsCache.find(s => s.id === studentId);
+    window.PsyAi?.openModal('student', studentId, student ? student.full_name : '');
+}
+
+function openGroupAiAnalysis() {
+    if (!user.groupName) return;
+    window.PsyAi?.openModal('group', user.groupName, user.groupName);
+}
+
 // Скачивание PDF-заключения по студенту (read-only, по данным группы).
-function downloadStudentReport(studentId) {
+async function downloadStudentReport(studentId) {
     const student = studentsCache.find(s => s.id === studentId);
     if (!student) return;
     const results = resultsCache.filter(r => r.user_id === studentId);
+    let aiAnalysis = '';
+    try {
+        if (window.PsyAi?.enabled) {
+            const params = new URLSearchParams({ scope: 'student', targetId: String(studentId) });
+            const res = await fetch(`/api/ai/analysis?${params}`, { headers: authHeaders });
+            if (res.ok) aiAnalysis = (await res.json())?.analysis?.content || '';
+        }
+    } catch (e) {}
     try {
         window.PsyPdf.download(
-            window.PsyPdf.buildStudentReport(student, results),
+            window.PsyPdf.buildStudentReport(student, results, { aiAnalysis }),
             `${t('report.title')}-${student.full_name}-${new Date().toISOString().slice(0, 10)}`
         );
     } catch (error) {
