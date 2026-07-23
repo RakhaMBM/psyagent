@@ -103,7 +103,7 @@ const baseDbConfig = {
     user: process.env.DB_USER || 'psyagent_user',
     password: DB_PASSWORD,
     waitForConnections: true,
-    connectionLimit: 10,
+    connectionLimit: 5,
     queueLimit: 0,
     charset: 'utf8mb4'
 };
